@@ -95,6 +95,29 @@ class TelegramService
     public function sendPhoto(string|int $chatId, string $photo, ?string $caption = null, array $options = []): bool
     {
         try {
+            // Convert URL to local file path for Telegram upload
+            if (filter_var($photo, FILTER_VALIDATE_URL)) {
+                // Extract the path from URL (e.g., /storage/generated_images/file.jpg)
+                $path = parse_url($photo, PHP_URL_PATH);
+                // Remove /storage prefix and map to storage/app/public
+                $relativePath = str_replace('/storage/', '', $path);
+                $localPath = storage_path('app/public/' . $relativePath);
+
+                if (file_exists($localPath)) {
+                    $photo = \Telegram\Bot\FileUpload\InputFile::create($localPath);
+                } else {
+                    Log::error('TelegramService: Photo file not found', [
+                        'url' => $photo,
+                        'local_path' => $localPath,
+                    ]);
+                    return false;
+                }
+            } elseif (file_exists($photo)) {
+                // For local file paths, use InputFile
+                $photo = \Telegram\Bot\FileUpload\InputFile::create($photo);
+            }
+            // Otherwise assume it's a file_id (string from previous upload)
+
             $params = array_merge([
                 'chat_id' => $chatId,
                 'photo' => $photo,
@@ -109,12 +132,69 @@ class TelegramService
 
             Log::info('TelegramService: Photo sent', [
                 'chat_id' => $chatId,
-                'photo' => substr($photo, 0, 50),
+                'photo' => is_string($photo) ? substr($photo, 0, 50) : 'InputFile object',
             ]);
 
             return true;
         } catch (TelegramSDKException $e) {
             Log::error('TelegramService: Failed to send photo', [
+                'chat_id' => $chatId,
+                'error' => $e->getMessage(),
+            ]);
+
+            return false;
+        }
+    }
+
+    /**
+     * Send a voice message (audio file).
+     *
+     * @param string|int $chatId
+     * @param string $voice URL or file_id of the voice file
+     * @param array $options Additional Telegram API options
+     * @return bool Success status
+     */
+    public function sendVoice(string|int $chatId, string $voice, array $options = []): bool
+    {
+        try {
+            // Convert URL to local file path for Telegram upload (same logic as sendPhoto)
+            if (filter_var($voice, FILTER_VALIDATE_URL)) {
+                // Extract the path from URL (e.g., /storage/voice_notes/file.mp3)
+                $path = parse_url($voice, PHP_URL_PATH);
+                // Remove /storage prefix and map to storage/app/public
+                $relativePath = str_replace('/storage/', '', $path);
+                $localPath = storage_path('app/public/' . $relativePath);
+
+                if (file_exists($localPath)) {
+                    $voice = \Telegram\Bot\FileUpload\InputFile::create($localPath);
+                } else {
+                    Log::error('TelegramService: Voice file not found', [
+                        'url' => $voice,
+                        'local_path' => $localPath,
+                    ]);
+                    return false;
+                }
+            } elseif (file_exists($voice)) {
+                // For local file paths, use InputFile
+                $voice = \Telegram\Bot\FileUpload\InputFile::create($voice);
+            }
+            // Otherwise assume it's a file_id (string from previous upload)
+
+            $params = array_merge([
+                'chat_id' => $chatId,
+                'voice' => $voice,
+            ], $options);
+
+            Telegram::sendVoice($params);
+
+            Log::info('TelegramService: Voice message sent', [
+                'chat_id' => $chatId,
+                'voice' => is_string($voice) ? substr($voice, 0, 50) : 'InputFile object',
+            ]);
+
+            return true;
+        } catch (TelegramSDKException $e) {
+            Log::error('TelegramService: Failed to send voice', [
                 'chat_id' => $chatId,
                 'error' => $e->getMessage(),
             ]);
@@ -218,6 +298,26 @@ class TelegramService
             ]);
 
             return null;
+        }
+    }
+
+    /**
+     * Get updates (polling mode).
+     *
+     * @param array $params Parameters (offset, limit, timeout)
+     * @return array Updates
+     */
+    public function getUpdates(array $params = []): array
+    {
+        try {
+            $response = Telegram::getUpdates($params);
+            return $response;
+        } catch (TelegramSDKException $e) {
+            Log::error('TelegramService: Failed to get updates', [
+                'error' => $e->getMessage(),
+            ]);
+
+            return [];
         }
     }
 

@@ -18,6 +18,8 @@ class Persona extends Model implements HasMedia
         'physical_traits',
         'wake_time',
         'sleep_time',
+        'voice_frequency',
+        'image_frequency',
         'is_active',
     ];
 

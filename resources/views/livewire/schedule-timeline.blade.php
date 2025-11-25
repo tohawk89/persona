@@ -1,8 +1,13 @@
-<div class="py-12">
+<div class="py-12" wire:poll.3s>
     <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
         <div class="bg-white dark:bg-gray-800 overflow-hidden shadow-sm sm:rounded-lg">
             <div class="p-6 text-gray-900 dark:text-gray-100">
-                <h2 class="text-2xl font-bold mb-6">Schedule Timeline</h2>
+                <div class="flex items-center justify-between mb-6">
+                    <h2 class="text-2xl font-bold">Schedule Timeline</h2>
+                    <span class="text-xs text-gray-500 dark:text-gray-400">
+                        🔄 Auto-refreshing every 3s
+                    </span>
+                </div>
 
                 @if (!$events->count() && !Auth::user()->persona)
                     <div class="mb-6 p-6 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg text-center">
@@ -62,6 +67,15 @@
                                         {{ $event->scheduled_at->diffForHumans() }}
                                     </span>
                                     @if($event->status === 'pending')
+                                        <button
+                                            wire:click="sendNow({{ $event->id }})"
+                                            wire:loading.attr="disabled"
+                                            wire:target="sendNow({{ $event->id }})"
+                                            class="px-3 py-1.5 text-xs font-medium bg-green-600 hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-md transition-colors"
+                                        >
+                                            <span wire:loading.remove wire:target="sendNow({{ $event->id }})">📤 Send Now</span>
+                                            <span wire:loading wire:target="sendNow({{ $event->id }})">⏳ Sending...</span>
+                                        </button>
                                         <button
                                             wire:click="cancelEvent({{ $event->id }})"
                                             onclick="return confirm('Cancel this event?')"

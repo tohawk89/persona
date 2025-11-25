@@ -1,8 +1,13 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\TelegramWebhookController;
 
 Route::view('/', 'welcome');
+
+// Telegram Webhook Routes (no auth required)
+Route::post('/api/telegram/webhook', [TelegramWebhookController::class, 'webhook'])->name('telegram.webhook');
+Route::get('/api/telegram/setup-webhook', [TelegramWebhookController::class, 'setupWebhook'])->middleware(['auth'])->name('telegram.setup');
 
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::view('dashboard', 'dashboard')->name('dashboard');

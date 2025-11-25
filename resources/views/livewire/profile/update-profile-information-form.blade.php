@@ -10,6 +10,8 @@ new class extends Component
 {
     public string $name = '';
     public string $email = '';
+    public ?string $telegram_chat_id = '';
+    public ?string $telegram_username = '';
 
     /**
      * Mount the component.
@@ -18,6 +20,8 @@ new class extends Component
     {
         $this->name = Auth::user()->name;
         $this->email = Auth::user()->email;
+        $this->telegram_chat_id = Auth::user()->telegram_chat_id ?? '';
+        $this->telegram_username = Auth::user()->telegram_username ?? '';
     }
 
     /**
@@ -30,6 +34,8 @@ new class extends Component
         $validated = $this->validate([
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'string', 'lowercase', 'email', 'max:255', Rule::unique(User::class)->ignore($user->id)],
+            'telegram_chat_id' => ['nullable', 'string', 'max:255'],
+            'telegram_username' => ['nullable', 'string', 'max:255'],
         ]);
 
         $user->fill($validated);
@@ -102,6 +108,24 @@ new class extends Component
                     @endif
                 </div>
             @endif
+        </div>
+
+        <div>
+            <x-input-label for="telegram_chat_id" :value="__('Telegram Chat ID')" />
+            <x-text-input wire:model="telegram_chat_id" id="telegram_chat_id" name="telegram_chat_id" type="text" class="mt-1 block w-full" placeholder="e.g., 123456789" />
+            <x-input-error class="mt-2" :messages="$errors->get('telegram_chat_id')" />
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                Get your chat ID by messaging <a href="https://t.me/userinfobot" target="_blank" class="text-blue-600 dark:text-blue-400 hover:underline">@userinfobot</a> on Telegram
+            </p>
+        </div>
+
+        <div>
+            <x-input-label for="telegram_username" :value="__('Telegram Username')" />
+            <x-text-input wire:model="telegram_username" id="telegram_username" name="telegram_username" type="text" class="mt-1 block w-full" placeholder="e.g., @username" />
+            <x-input-error class="mt-2" :messages="$errors->get('telegram_username')" />
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                Optional - Your Telegram username (with or without @)
+            </p>
         </div>
 
         <div class="flex items-center gap-4">

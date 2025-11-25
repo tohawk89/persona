@@ -16,6 +16,8 @@ class PersonaManager extends Component
     public $physical_traits;
     public $wake_time;
     public $sleep_time;
+    public $voice_frequency;
+    public $image_frequency;
     public $is_active = true;
     public $new_photos = [];
     public $accumulated_photos = [];
@@ -27,6 +29,8 @@ class PersonaManager extends Component
         'physical_traits' => 'nullable|string',
         'wake_time' => 'required|date_format:H:i',
         'sleep_time' => 'required|date_format:H:i',
+        'voice_frequency' => 'required|in:never,rare,moderate,frequent',
+        'image_frequency' => 'required|in:never,rare,moderate,frequent',
         'is_active' => 'boolean',
         'new_photos.*' => 'nullable|image|max:10240', // 10MB max per image
     ];
@@ -42,11 +46,15 @@ class PersonaManager extends Component
             // Convert HH:MM:SS to HH:MM for time input
             $this->wake_time = substr($this->persona->wake_time, 0, 5);
             $this->sleep_time = substr($this->persona->sleep_time, 0, 5);
+            $this->voice_frequency = $this->persona->voice_frequency ?? 'moderate';
+            $this->image_frequency = $this->persona->image_frequency ?? 'moderate';
             $this->is_active = $this->persona->is_active;
         } else {
             // Set defaults
             $this->wake_time = '07:00';
             $this->sleep_time = '23:00';
+            $this->voice_frequency = 'moderate';
+            $this->image_frequency = 'moderate';
             $this->is_active = true;
         }
     }
@@ -84,6 +92,8 @@ class PersonaManager extends Component
             'physical_traits' => $this->physical_traits,
             'wake_time' => $this->wake_time,
             'sleep_time' => $this->sleep_time,
+            'voice_frequency' => $this->voice_frequency,
+            'image_frequency' => $this->image_frequency,
             'is_active' => $this->is_active,
         ];
 

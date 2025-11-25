@@ -9,6 +9,16 @@ use Carbon\Carbon;
 
 class ScheduleTimeline extends Component
 {
+    public function sendNow($id)
+    {
+        $event = EventSchedule::findOrFail($id);
+
+        // Dispatch the job immediately
+        \App\Jobs\ProcessScheduledEvent::dispatch($event);
+
+        session()->flash('success', 'Event sent to queue! Check your Telegram in a moment.');
+    }
+
     public function cancelEvent($id)
     {
         $event = EventSchedule::findOrFail($id);

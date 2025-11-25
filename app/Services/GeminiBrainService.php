@@ -56,6 +56,9 @@ class GeminiBrainService
             }
             $conversationText .= "User: {$userMessage}\n";
 
+            // Get media usage instructions based on persona preferences
+            $mediaInstructions = $this->buildMediaInstructions($persona);
+
             // Construct full prompt with image generation capability
             $fullPrompt = <<<PROMPT
 {$persona->system_prompt}
@@ -68,15 +71,7 @@ CONVERSATION HISTORY:
 
 INSTRUCTIONS:
 - Respond naturally as the persona, taking into account the memory context and conversation history.
-- If you want to generate an image, use the tag: [GENERATE_IMAGE: description]
-  Example: [GENERATE_IMAGE: Portrait of a person smiling at the camera in a bright room]
-  IMPORTANT: Keep image descriptions professional and appropriate. Avoid mentioning beds, bedrooms, or intimate settings.
-  Use safe contexts like: coffee shops, parks, streets, studios, bright rooms, outdoor settings.
-  Only use image generation when it makes sense in the conversation (user asks for a photo, selfie, picture, etc.)
-- If you want to send a voice note, use the tag: [SEND_VOICE: text to speak]
-  Example: [SEND_VOICE: I miss you so much!]
-  Use voice notes for more intimate, emotional messages or when text doesn't convey the right feeling.
-  Keep voice messages short and natural (1-2 sentences).
+{$mediaInstructions}
 Assistant:
 PROMPT;
 
@@ -105,19 +100,24 @@ PROMPT;
      * @param Collection $chatHistory Collection of messages (sender_type, content)
      * @param Collection $memoryTags Collection of memory tags (target, key, value)
      * @param string $systemPrompt The persona's system prompt
+     * @param Persona $persona The persona object (for image generation)
      * @return string The AI's response
      */
     public function generateChatResponse(
         Collection $chatHistory,
         Collection $memoryTags,
-        string $systemPrompt
+        string $systemPrompt,
+        Persona $persona
     ): string {
         try {
             // Build the context prompt
             $memoryContext = $this->buildMemoryContext($memoryTags);
             $conversationHistory = $this->buildConversationHistory($chatHistory);
 
-            // Construct the full prompt
+            // Get media usage instructions based on persona preferences
+            $mediaInstructions = $this->buildMediaInstructions($persona);
+
+            // Construct the full prompt with media generation instructions
             $fullPrompt = <<<PROMPT
 {$systemPrompt}
 
@@ -127,14 +127,22 @@ MEMORY CONTEXT:
 CONVERSATION HISTORY:
 {$conversationHistory}
 
-Respond naturally as the persona, taking into account the memory context and conversation history.
+INSTRUCTIONS:
+- Respond naturally as the persona, taking into account the memory context and conversation history.
+{$mediaInstructions}
 PROMPT;
 
             // Call Gemini API with retry logic
             $apiKey = config('services.gemini.api_key');
             $client = Gemini::client($apiKey);
 
-            return $this->callGeminiWithRetry($client, $fullPrompt);
+            $textResponse = $this->callGeminiWithRetry($client, $fullPrompt);
+
+            // Process media tags (images and voice notes)
+            $textResponse = $this->processImageTags($textResponse, $persona);
+            $textResponse = $this->processVoiceTags($textResponse);
+
+            return $textResponse;
         } catch (\Exception $e) {
             Log::error('GeminiBrainService: Chat response generation failed', [
                 'error' => $e->getMessage(),
@@ -279,13 +287,15 @@ OUTPUT FORMAT (JSON only, no markdown):
 [
   {
     "target": "user",
-    "key": "favorite_drink",
-    "value": "coffee with oat milk"
+    "category": "favorite_drink",
+    "value": "coffee with oat milk",
+    "context": "Mentioned during morning chat"
   },
   {
     "target": "self",
-    "key": "communication_style",
-    "value": "friendly and empathetic"
+    "category": "communication_style",
+    "value": "friendly and empathetic",
+    "context": "Observed from conversation tone"
   }
 ]
 
@@ -463,23 +473,41 @@ PROMPT;
      */
     private function buildImagePrompt(string $prompt, Persona $persona): string
     {
+        // Define the "Realism Booster" - forces photorealistic, candid style
+        $styleBooster = "shot on iPhone, candid photography, natural lighting, grainy texture, skin pores, slight imperfections, 4k, hyper-realistic";
+
         // Sanitize prompt to avoid NSFW flags
         $sanitizedPrompt = $this->sanitizePromptForImageGeneration($prompt);
 
-        // Add privacy instruction at the beginning
-        $enhancedPrompt = "IMPORTANT: if person image, apply anonymous aesthetic, DO NOT show the complete face. " . $sanitizedPrompt;
+        // Get current outfit based on time of day
+        $currentOutfit = $this->getCurrentOutfit($persona->id);
 
-        // Gather hybrid physical traits
-        $combinedTraits = $this->gatherPhysicalTraits($persona);
+        // Construct the final prompt following the Realism Formula
+        // Order: Subject & Action → The Person → The Outfit → The Vibe
+        $fullPrompt = "A candid photo of {$sanitizedPrompt}. ";
 
-        if ($combinedTraits) {
-            $enhancedPrompt .= ". The subject has: {$combinedTraits}";
+        if ($persona->physical_traits) {
+            $fullPrompt .= "The subject is a woman with {$persona->physical_traits}";
+
+            if ($currentOutfit) {
+                $fullPrompt .= ", wearing {$currentOutfit}";
+            }
+
+            $fullPrompt .= ". ";
         }
 
-        // Add professional styling keywords
-        $enhancedPrompt .= " professional portrait photography, 8k, high quality, well-lit, detailed background blur, soft lighting, artistic composition";
+        $fullPrompt .= "Style: {$styleBooster}.";
 
-        return $enhancedPrompt;
+        // Safety check: truncate if exceeds 1000 characters to avoid API errors
+        if (strlen($fullPrompt) > 1000) {
+            $fullPrompt = substr($fullPrompt, 0, 997) . '...';
+
+            Log::warning('GeminiBrainService: Prompt truncated to 1000 characters', [
+                'original_length' => strlen($fullPrompt),
+            ]);
+        }
+
+        return $fullPrompt;
     }
 
     /**
@@ -692,6 +720,53 @@ PROMPT;
     // ============================================================================
     // UTILITY METHODS
     // ============================================================================
+
+    /**
+     * Build media generation instructions based on persona preferences.
+     */
+    private function buildMediaInstructions(Persona $persona): string
+    {
+        $instructions = [];
+
+        // Voice note instructions
+        $voiceFreq = $persona->voice_frequency ?? 'moderate';
+        if ($voiceFreq !== 'never') {
+            $voiceGuidance = match($voiceFreq) {
+                'rare' => 'Use voice notes VERY SPARINGLY - only for extremely special, emotional moments (birthdays, milestones, deeply heartfelt messages).',
+                'moderate' => 'Use voice notes OCCASIONALLY for intimate or emotional messages - but prefer text most of the time. Use only when it truly adds value.',
+                'frequent' => 'You can use voice notes for emotional, intimate, or expressive messages when text doesn\'t capture the right feeling.',
+                default => 'Use voice notes moderately.',
+            };
+
+            $instructions[] = <<<VOICE
+- If you want to send a voice note, use the tag: [SEND_VOICE: text to speak]
+  Example: [SEND_VOICE: I miss you so much!]
+  {$voiceGuidance}
+  Keep voice messages short and natural (1-2 sentences).
+VOICE;
+        }
+
+        // Image generation instructions
+        $imageFreq = $persona->image_frequency ?? 'moderate';
+        if ($imageFreq !== 'never') {
+            $imageGuidance = match($imageFreq) {
+                'rare' => 'Generate images VERY RARELY - only when user explicitly asks for photos/selfies.',
+                'moderate' => 'Generate images OCCASIONALLY when conversation naturally calls for it (user asks for photo/selfie, or specific visual situations).',
+                'frequent' => 'You can generate images when it makes sense in the conversation or to enhance emotional connection.',
+                default => 'Use images moderately.',
+            };
+
+            $instructions[] = <<<IMAGE
+- If you want to generate an image, use the tag: [GENERATE_IMAGE: description]
+  Example: [GENERATE_IMAGE: Portrait of a person smiling at the camera in a bright room]
+  {$imageGuidance}
+  IMPORTANT: Keep descriptions professional and appropriate. Avoid mentioning beds, bedrooms, or intimate settings.
+  Use safe contexts like: coffee shops, parks, streets, studios, bright rooms, outdoor settings.
+IMAGE;
+        }
+
+        return implode("\n", $instructions);
+    }
 
     /**
      * Fallback daily plan in case of API failure.

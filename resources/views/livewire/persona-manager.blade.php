@@ -75,6 +75,41 @@
                         </div>
                     </div>
 
+                    <!-- Media Preferences -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div>
+                            <label for="voice_frequency" class="block text-sm font-medium mb-2">🎤 Voice Note Frequency *</label>
+                            <select
+                                wire:model="voice_frequency"
+                                id="voice_frequency"
+                                class="w-full px-4 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            >
+                                <option value="never">Never - Text only</option>
+                                <option value="rare">Rare - Special moments only</option>
+                                <option value="moderate">Moderate - Occasionally (Recommended)</option>
+                                <option value="frequent">Frequent - Often</option>
+                            </select>
+                            <p class="text-xs text-gray-500 mt-1">How often the AI should use voice notes</p>
+                            @error('voice_frequency') <span class="text-red-500 text-sm">{{ $message }}</span> @enderror
+                        </div>
+
+                        <div>
+                            <label for="image_frequency" class="block text-sm font-medium mb-2">📸 Image Generation Frequency *</label>
+                            <select
+                                wire:model="image_frequency"
+                                id="image_frequency"
+                                class="w-full px-4 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            >
+                                <option value="never">Never - No images</option>
+                                <option value="rare">Rare - Only when asked</option>
+                                <option value="moderate">Moderate - Occasionally (Recommended)</option>
+                                <option value="frequent">Frequent - Often</option>
+                            </select>
+                            <p class="text-xs text-gray-500 mt-1">How often the AI should generate images</p>
+                            @error('image_frequency') <span class="text-red-500 text-sm">{{ $message }}</span> @enderror
+                        </div>
+                    </div>
+
                     <!-- Reference Images Gallery -->
                     <div>
                         <label class="block text-sm font-medium mb-3">Reference Images</label>
