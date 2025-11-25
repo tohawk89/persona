@@ -71,15 +71,8 @@ class ProcessChatResponse implements ShouldQueue
             );
 
             // Process media tags and send appropriate messages
+            // NOTE: sendResponseToTelegram() handles saving to DB (CRITICAL for context)
             $this->sendResponseToTelegram($response);
-
-            // Save bot response to database
-            Message::create([
-                'user_id' => $this->user->id,
-                'persona_id' => $persona->id,
-                'sender_type' => 'bot',
-                'content' => $response,
-            ]);
 
             Log::info('ProcessChatResponse: Response sent successfully', [
                 'user_id' => $this->user->id,
@@ -105,6 +98,7 @@ class ProcessChatResponse implements ShouldQueue
 
     /**
      * Send the response to Telegram, handling media tags.
+     * CRITICAL: Bot messages are ALWAYS saved to DB for context continuity.
      */
     private function sendResponseToTelegram(string $response): void
     {
@@ -117,29 +111,70 @@ class ProcessChatResponse implements ShouldQueue
         $textPart = preg_replace('/\[AUDIO:\s*.+?\]/', '', $textPart);
         $textPart = trim($textPart);
 
-        // Send image if present
+        // CASE A: Image Tag
         if ($hasImage) {
             $imageUrl = trim($imageMatch[1]);
+
+            // Send "Uploading Photo" action
+            Telegram::sendChatAction($this->user->telegram_chat_id, 'upload_photo');
+
             Telegram::sendPhoto(
                 $this->user->telegram_chat_id,
                 $imageUrl,
                 $textPart ?: null // Use text as caption
             );
+
+            // CRITICAL: Save bot message with image to DB
+            Message::create([
+                'user_id' => $this->user->id,
+                'persona_id' => $this->user->persona?->id,
+                'sender_type' => 'bot',
+                'content' => $textPart ?: '[Image]',
+                'image_path' => $imageUrl,
+            ]);
         }
 
-        // Send audio if present
+        // CASE B: Voice Tag
         if ($hasAudio) {
             $audioUrl = trim($audioMatch[1]);
+
+            // Send "Record Voice" action
+            Telegram::sendChatAction($this->user->telegram_chat_id, 'record_voice');
+
             Telegram::sendVoice($this->user->telegram_chat_id, $audioUrl);
+
+            // CRITICAL: Save bot message with voice to DB
+            Message::create([
+                'user_id' => $this->user->id,
+                'persona_id' => $this->user->persona?->id,
+                'sender_type' => 'bot',
+                'content' => '[Voice Note]',
+            ]);
         }
 
-        // Send remaining text only if there's no image (image already used it as caption)
+        // CASE C: Standard Text (only if no image, since image already sent text as caption)
         if (!$hasImage && !$hasAudio && $textPart) {
             // Plain text message with streaming effect
             Telegram::sendStreamingMessage($this->user->telegram_chat_id, $textPart);
+
+            // CRITICAL: Save bot text response to DB
+            Message::create([
+                'user_id' => $this->user->id,
+                'persona_id' => $this->user->persona?->id,
+                'sender_type' => 'bot',
+                'content' => $textPart,
+            ]);
         } elseif (!$hasImage && $hasAudio && $textPart) {
             // If only audio (no image to use text as caption), send text separately
             Telegram::sendMessage($this->user->telegram_chat_id, $textPart);
+
+            // CRITICAL: Save bot text response to DB (in addition to voice note record above)
+            Message::create([
+                'user_id' => $this->user->id,
+                'persona_id' => $this->user->persona?->id,
+                'sender_type' => 'bot',
+                'content' => $textPart,
+            ]);
         }
     }
 }

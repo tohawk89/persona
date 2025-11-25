@@ -13,38 +13,73 @@ class TelegramWebhookController extends Controller
 {
     /**
      * Handle incoming Telegram webhook updates.
+     *
+     * SECURITY: Only processes messages from TELEGRAM_ADMIN_ID.
+     * UX: Sends immediate typing indicator to prevent "ghost" silence.
      */
     public function webhook(Request $request): JsonResponse
     {
+        // STEP 1: Secret Validation (CRITICAL SECURITY) - Outside try-catch to allow abort
+        $webhookSecret = env('TELEGRAM_WEBHOOK_SECRET');
+        if ($webhookSecret && $request->header('X-Telegram-Bot-Api-Secret-Token') !== $webhookSecret) {
+            Log::warning('TelegramWebhookController: Invalid secret token', [
+                'ip' => $request->ip(),
+                'provided_token' => $request->header('X-Telegram-Bot-Api-Secret-Token'),
+            ]);
+            abort(403, 'Forbidden: Invalid secret token');
+        }
+
         try {
-            // Parse the incoming Telegram update
+
+            // STEP 2: Parse Update
             $data = Telegram::parseUpdate($request->all());
 
             // Log incoming message for debugging
             Log::info('TelegramWebhookController: Received webhook', [
                 'chat_id' => $data['chat_id'] ?? null,
                 'text' => $data['text'] ?? null,
+                'from' => $data['user']['first_name'] ?? null,
             ]);
 
             // Ignore if no text message
             if (empty($data['text'])) {
-                return response()->json(['ok' => true, 'message' => 'No text content']);
+                return response()->json(['status' => 'ignored', 'reason' => 'No text content']);
             }
 
-            // Find or create user by Telegram chat ID
-            $user = User::firstOrCreate(
-                ['telegram_chat_id' => $data['chat_id']],
-                [
-                    'name' => $data['user']['first_name'] ?? 'User',
-                    'email' => "telegram_{$data['chat_id']}@placeholder.local",
-                    'password' => bcrypt(str()->random(32)), // Random password
-                ]
-            );
+            // STEP 3: Security Gate (CRITICAL - Block strangers immediately)
+            $chatId = $data['chat_id'];
+            $adminId = env('TELEGRAM_ADMIN_ID');
 
-            // Update user's last interaction timestamp (triggers SmartQueue logic)
-            SmartQueue::updateUserInteraction($user);
+            if ($chatId != $adminId) {
+                Log::warning('TelegramWebhookController: Unauthorized chat_id blocked', [
+                    'chat_id' => $chatId,
+                    'admin_id' => $adminId,
+                ]);
+                return response()->json(['status' => 'ignored', 'reason' => 'Unauthorized user']);
+            }
 
-            // Save incoming user message to database
+            // STEP 4: User Resolution
+            $user = User::where('telegram_chat_id', $chatId)->first();
+
+            if (!$user) {
+                // Create user only if they're the admin
+                $user = User::create([
+                    'telegram_chat_id' => $chatId,
+                    'name' => $data['user']['first_name'] ?? 'Admin',
+                    'email' => "telegram_{$chatId}@placeholder.local",
+                    'password' => bcrypt(str()->random(32)),
+                ]);
+
+                Log::info('TelegramWebhookController: Created new user for admin', [
+                    'user_id' => $user->id,
+                    'chat_id' => $chatId,
+                ]);
+            }
+
+            // STEP 5: UX Indicator (CRITICAL - Prevent "Ghost" silence)
+            Telegram::sendChatAction($chatId, 'typing');
+
+            // STEP 6: Save User Message
             $message = Message::create([
                 'user_id' => $user->id,
                 'persona_id' => $user->persona?->id,
@@ -52,7 +87,10 @@ class TelegramWebhookController extends Controller
                 'content' => $data['text'],
             ]);
 
-            // Dispatch job to process chat response (async)
+            // Update last interaction timestamp
+            $user->update(['last_interaction_at' => now()]);
+
+            // STEP 7: Async Processing
             ProcessChatResponse::dispatch($user, $message);
 
             // Dispatch background job to extract memories (every 10th message)
@@ -61,7 +99,8 @@ class TelegramWebhookController extends Controller
                 ExtractMemoryTags::dispatch($user);
             }
 
-            return response()->json(['ok' => true]);
+            // STEP 8: Response
+            return response()->json(['ok' => true, 'status' => 'processing']);
 
         } catch (\Exception $e) {
             Log::error('TelegramWebhookController: Webhook processing failed', [

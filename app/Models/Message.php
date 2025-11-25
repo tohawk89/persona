@@ -12,6 +12,7 @@ class Message extends Model
         'persona_id',
         'sender_type',
         'content',
+        'image_path',
         'is_event_trigger',
     ];
 
