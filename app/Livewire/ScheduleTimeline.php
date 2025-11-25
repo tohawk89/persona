@@ -1,0 +1,49 @@
+<?php
+
+namespace App\Livewire;
+
+use Livewire\Component;
+use App\Models\EventSchedule;
+use Illuminate\Support\Facades\Auth;
+use Carbon\Carbon;
+
+class ScheduleTimeline extends Component
+{
+    public function cancelEvent($id)
+    {
+        $event = EventSchedule::findOrFail($id);
+        $event->update(['status' => 'cancelled']);
+        session()->flash('success', 'Event cancelled successfully!');
+    }
+
+    public function testInChat($id)
+    {
+        $event = EventSchedule::findOrFail($id);
+
+        // Store the event details in session to trigger in test chat
+        session([
+            'trigger_event_id' => $event->id,
+            'trigger_event_type' => $event->type,
+            'trigger_event_prompt' => $event->context_prompt,
+            'trigger_event_time' => $event->scheduled_at->format('Y-m-d H:i:s'),
+        ]);
+
+        return redirect()->route('test.chat');
+    }
+
+    public function render()
+    {
+        $persona = Auth::user()->persona;
+
+        $events = $persona
+            ? EventSchedule::where('persona_id', $persona->id)
+                ->whereDate('scheduled_at', '>=', Carbon::today())
+                ->orderBy('scheduled_at', 'asc')
+                ->get()
+            : collect();
+
+        return view('livewire.schedule-timeline', [
+            'events' => $events,
+        ])->layout('layouts.app');
+    }
+}
