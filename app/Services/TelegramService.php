@@ -364,6 +364,33 @@ class TelegramService
     }
 
     /**
+     * Get file information from Telegram API.
+     *
+     * @param array $params Parameters including file_id
+     * @return array File info with file_path
+     */
+    public function getFile(array $params): array
+    {
+        try {
+            $file = Telegram::getFile($params);
+
+            return [
+                'file_id' => $file->getFileId(),
+                'file_unique_id' => $file->getFileUniqueId(),
+                'file_size' => $file->getFileSize(),
+                'file_path' => $file->getFilePath(),
+            ];
+        } catch (\Exception $e) {
+            Log::error('TelegramService: Failed to get file info', [
+                'params' => $params,
+                'error' => $e->getMessage(),
+            ]);
+
+            throw $e;
+        }
+    }
+
+    /**
      * Download a file from Telegram servers.
      *
      * @param string $fileId

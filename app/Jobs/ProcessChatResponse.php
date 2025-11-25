@@ -30,7 +30,8 @@ class ProcessChatResponse implements ShouldQueue
      */
     public function __construct(
         public User $user,
-        public Message $incomingMessage
+        public Message $incomingMessage,
+        public ?string $imagePath = null
     ) {}
 
     /**
@@ -62,21 +63,31 @@ class ProcessChatResponse implements ShouldQueue
             // Get memory tags
             $memoryTags = $persona->memoryTags;
 
-            // Generate AI response with media processing
+            // Generate AI response with media processing (pass image path for vision)
             $response = GeminiBrain::generateChatResponse(
                 $chatHistory,
                 $memoryTags,
                 $persona->system_prompt,
-                $persona
+                $persona,
+                $this->imagePath
             );
 
             // Process media tags and send appropriate messages
             // NOTE: sendResponseToTelegram() handles saving to DB (CRITICAL for context)
             $this->sendResponseToTelegram($response);
 
+            // Cleanup: Delete temporary image file after processing
+            if ($this->imagePath && file_exists($this->imagePath)) {
+                unlink($this->imagePath);
+                Log::info('ProcessChatResponse: Temp image file deleted', [
+                    'path' => $this->imagePath,
+                ]);
+            }
+
             Log::info('ProcessChatResponse: Response sent successfully', [
                 'user_id' => $this->user->id,
                 'response_length' => strlen($response),
+                'had_image' => $this->imagePath !== null,
             ]);
 
         } catch (\Exception $e) {

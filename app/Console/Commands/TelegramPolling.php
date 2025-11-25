@@ -54,12 +54,72 @@ class TelegramPolling extends Command
         try {
             // Parse the update
             $data = Telegram::parseUpdate($update);
+            $message = $update['message'] ?? null;
 
-            if (empty($data['text'])) {
-                return; // Skip non-text messages
+            // Check for photo
+            $imagePath = null;
+            if ($message && isset($message['photo']) && is_array($message['photo'])) {
+                // Get the largest photo (last item in array)
+                $photo = end($message['photo']);
+                $fileId = $photo['file_id'];
+
+                try {
+                    // Get file info from Telegram
+                    $fileInfo = Telegram::getFile(['file_id' => $fileId]);
+                    $filePath = $fileInfo['file_path'] ?? null;
+
+                    if ($filePath) {
+                        // Download image from Telegram
+                        $botToken = config('services.telegram.bot_token');
+                        $fileUrl = "https://api.telegram.org/file/bot{$botToken}/{$filePath}";
+
+                        $imageData = file_get_contents($fileUrl);
+
+                        if ($imageData) {
+                            // Save to temp storage
+                            $uuid = \Illuminate\Support\Str::uuid();
+                            $extension = pathinfo($filePath, PATHINFO_EXTENSION) ?: 'jpg';
+                            $tempPath = storage_path("app/private/temp/{$uuid}.{$extension}");
+
+                            // Ensure temp directory exists
+                            if (!is_dir(storage_path('app/private/temp'))) {
+                                mkdir(storage_path('app/private/temp'), 0755, true);
+                            }
+
+                            file_put_contents($tempPath, $imageData);
+                            $imagePath = $tempPath;
+
+                            $this->info("Downloaded photo: {$fileId} -> {$tempPath}");
+                            Log::info('TelegramPolling: Downloaded photo', [
+                                'file_id' => $fileId,
+                                'temp_path' => $tempPath,
+                                'size' => strlen($imageData),
+                            ]);
+                        }
+                    }
+                } catch (\Exception $e) {
+                    $this->error("Failed to download photo: {$e->getMessage()}");
+                    Log::error('TelegramPolling: Failed to download photo', [
+                        'file_id' => $fileId,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
             }
 
-            $this->info("Message from {$data['user']['first_name']}: {$data['text']}");
+            // Get text or caption
+            $text = $data['text'] ?? ($message['caption'] ?? null);
+
+            // If photo but no caption, set default text
+            if ($imagePath && empty($text)) {
+                $text = '[Sent an image]';
+            }
+
+            // Skip if no text and no image
+            if (empty($text) && !$imagePath) {
+                return;
+            }
+
+            $this->info("Message from {$data['user']['first_name']}: {$text}" . ($imagePath ? ' [with image]' : ''));
 
             // Find or create user
             $user = User::firstOrCreate(
@@ -74,18 +134,22 @@ class TelegramPolling extends Command
             // Update interaction timestamp
             SmartQueue::updateUserInteraction($user);
 
+            // Send typing indicator
+            Telegram::sendChatAction($data['chat_id'], 'typing');
+
             // Save message
             $message = Message::create([
                 'user_id' => $user->id,
                 'persona_id' => $user->persona?->id,
                 'sender_type' => 'user',
-                'content' => $data['text'],
+                'content' => $text,
+                'image_path' => $imagePath,
             ]);
 
             $this->info('Message saved, dispatching response job...');
 
-            // Dispatch response job
-            ProcessChatResponse::dispatch($user, $message);
+            // Dispatch response job with image path
+            ProcessChatResponse::dispatch($user, $message, $imagePath);
 
             // Extract memories every 10 messages
             $messageCount = Message::where('user_id', $user->id)->count();

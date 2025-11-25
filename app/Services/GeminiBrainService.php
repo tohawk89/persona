@@ -96,18 +96,21 @@ PROMPT;
 
     /**
      * Generate a conversational response based on chat history and memory tags.
+     * Supports multimodal input (text + image) via Gemini Vision API.
      *
      * @param Collection $chatHistory Collection of messages (sender_type, content)
      * @param Collection $memoryTags Collection of memory tags (target, key, value)
      * @param string $systemPrompt The persona's system prompt
      * @param Persona $persona The persona object (for image generation)
+     * @param string|null $imagePath Optional path to image file for vision analysis
      * @return string The AI's response
      */
     public function generateChatResponse(
         Collection $chatHistory,
         Collection $memoryTags,
         string $systemPrompt,
-        Persona $persona
+        Persona $persona,
+        ?string $imagePath = null
     ): string {
         try {
             // Build the context prompt
@@ -132,11 +135,11 @@ INSTRUCTIONS:
 {$mediaInstructions}
 PROMPT;
 
-            // Call Gemini API with retry logic
+            // Call Gemini API with retry logic (multimodal if image provided)
             $apiKey = config('services.gemini.api_key');
             $client = Gemini::client($apiKey);
 
-            $textResponse = $this->callGeminiWithRetry($client, $fullPrompt);
+            $textResponse = $this->callGeminiWithRetry($client, $fullPrompt, $imagePath);
 
             // Process media tags (images and voice notes)
             $textResponse = $this->processImageTags($textResponse, $persona);
@@ -147,6 +150,7 @@ PROMPT;
             Log::error('GeminiBrainService: Chat response generation failed', [
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
+                'had_image' => $imagePath !== null,
             ]);
 
             return "Adoi, ada masalah sikit... Cuba tanya sekali lagi? 💭";
@@ -612,14 +616,73 @@ PROMPT;
 
     /**
      * Call Gemini API with retry logic for overload handling.
+     * Supports multimodal input (text + image) when imagePath is provided.
+     *
+     * @param mixed $client Gemini client instance
+     * @param string $prompt Text prompt for generation
+     * @param string|null $imagePath Optional path to image file for vision analysis
+     * @return string Generated text response
      */
-    private function callGeminiWithRetry($client, string $prompt): string
+    private function callGeminiWithRetry($client, string $prompt, ?string $imagePath = null): string
     {
         $retryDelay = self::INITIAL_RETRY_DELAY;
 
         for ($attempt = 1; $attempt <= self::MAX_RETRIES; $attempt++) {
             try {
-                $response = $client->generativeModel(self::GEMINI_MODEL)->generateContent($prompt);
+                $model = $client->generativeModel(self::GEMINI_MODEL);
+
+                // If image provided, use HTTP API directly (SDK has issues with multimodal)
+                if ($imagePath && file_exists($imagePath)) {
+                    // Encode image as base64
+                    $imageData = base64_encode(file_get_contents($imagePath));
+                    $mimeType = mime_content_type($imagePath);
+
+                    Log::info('GeminiBrainService: Calling Gemini with multimodal input', [
+                        'mime_type' => $mimeType,
+                        'image_size' => strlen($imageData),
+                    ]);
+
+                    // Use HTTP API directly for multimodal (SDK has compatibility issues)
+                    $apiKey = config('services.gemini.api_key');
+                    $url = "https://generativelanguage.googleapis.com/v1beta/models/" . self::GEMINI_MODEL . ":generateContent?key={$apiKey}";
+
+                    $payload = [
+                        'contents' => [
+                            [
+                                'parts' => [
+                                    ['text' => $prompt],
+                                    [
+                                        'inline_data' => [
+                                            'mime_type' => $mimeType,
+                                            'data' => $imageData,
+                                        ],
+                                    ],
+                                ],
+                            ],
+                        ],
+                    ];
+
+                    $httpResponse = Http::timeout(60)->post($url, $payload);
+
+                    if ($httpResponse->successful()) {
+                        $data = $httpResponse->json();
+                        $text = $data['candidates'][0]['content']['parts'][0]['text'] ?? '';
+                        Log::info('GeminiBrainService: Multimodal response received', [
+                            'response_length' => strlen($text),
+                        ]);
+                        return $text;
+                    } else {
+                        Log::error('GeminiBrainService: Multimodal API failed', [
+                            'status' => $httpResponse->status(),
+                            'body' => $httpResponse->body(),
+                        ]);
+                        throw new \Exception('Gemini multimodal API failed: ' . $httpResponse->body());
+                    }
+                } else {
+                    // Standard text-only generation
+                    $response = $model->generateContent($prompt);
+                }
+
                 return $response->text();
             } catch (\Exception $e) {
                 $errorMessage = $e->getMessage();
@@ -636,6 +699,14 @@ PROMPT;
                 if ($isOverloaded) {
                     Log::error('GeminiBrainService: Max retries reached, model still overloaded');
                     return "Ada hal sikit... Cuba sekejap lagi ya? 😊";
+                }
+
+                // Log vision-specific errors separately
+                if ($imagePath) {
+                    Log::error('GeminiBrainService: Vision API call failed', [
+                        'error' => $errorMessage,
+                        'attempt' => $attempt,
+                    ]);
                 }
 
                 throw $e;

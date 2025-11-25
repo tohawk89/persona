@@ -32,18 +32,77 @@ class TelegramWebhookController extends Controller
         try {
 
             // STEP 2: Parse Update
-            $data = Telegram::parseUpdate($request->all());
+            $payload = $request->all();
+            $data = Telegram::parseUpdate($payload);
+            $message = $payload['message'] ?? null;
+
+            // Check for photo
+            $imagePath = null;
+            if ($message && isset($message['photo']) && is_array($message['photo'])) {
+                // Get the largest photo (last item in array)
+                $photo = end($message['photo']);
+                $fileId = $photo['file_id'];
+
+                try {
+                    // Get file info from Telegram
+                    $fileInfo = Telegram::getFile(['file_id' => $fileId]);
+                    $filePath = $fileInfo['file_path'] ?? null;
+
+                    if ($filePath) {
+                        // Download image from Telegram
+                        $botToken = config('services.telegram.bot_token');
+                        $fileUrl = "https://api.telegram.org/file/bot{$botToken}/{$filePath}";
+
+                        $imageData = file_get_contents($fileUrl);
+
+                        if ($imageData) {
+                            // Save to temp storage
+                            $uuid = \Illuminate\Support\Str::uuid();
+                            $extension = pathinfo($filePath, PATHINFO_EXTENSION) ?: 'jpg';
+                            $tempPath = storage_path("app/private/temp/{$uuid}.{$extension}");
+
+                            // Ensure temp directory exists
+                            if (!is_dir(storage_path('app/private/temp'))) {
+                                mkdir(storage_path('app/private/temp'), 0755, true);
+                            }
+
+                            file_put_contents($tempPath, $imageData);
+                            $imagePath = $tempPath;
+
+                            Log::info('TelegramWebhookController: Downloaded photo', [
+                                'file_id' => $fileId,
+                                'temp_path' => $tempPath,
+                                'size' => strlen($imageData),
+                            ]);
+                        }
+                    }
+                } catch (\Exception $e) {
+                    Log::error('TelegramWebhookController: Failed to download photo', [
+                        'file_id' => $fileId,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+            }
+
+            // Get text or caption
+            $text = $data['text'] ?? ($message['caption'] ?? null);
+
+            // If photo but no caption, set default text
+            if ($imagePath && empty($text)) {
+                $text = '[Sent an image]';
+            }
 
             // Log incoming message for debugging
             Log::info('TelegramWebhookController: Received webhook', [
                 'chat_id' => $data['chat_id'] ?? null,
-                'text' => $data['text'] ?? null,
+                'text' => $text,
+                'has_image' => $imagePath !== null,
                 'from' => $data['user']['first_name'] ?? null,
             ]);
 
-            // Ignore if no text message
-            if (empty($data['text'])) {
-                return response()->json(['status' => 'ignored', 'reason' => 'No text content']);
+            // Ignore if no text and no image
+            if (empty($text) && !$imagePath) {
+                return response()->json(['status' => 'ignored', 'reason' => 'No text or image content']);
             }
 
             // STEP 3: Security Gate (CRITICAL - Block strangers immediately)
@@ -80,18 +139,19 @@ class TelegramWebhookController extends Controller
             Telegram::sendChatAction($chatId, 'typing');
 
             // STEP 6: Save User Message
-            $message = Message::create([
+            $userMessage = Message::create([
                 'user_id' => $user->id,
                 'persona_id' => $user->persona?->id,
                 'sender_type' => 'user',
-                'content' => $data['text'],
+                'content' => $text,
+                'image_path' => $imagePath, // Store image path if present
             ]);
 
             // Update last interaction timestamp
             $user->update(['last_interaction_at' => now()]);
 
-            // STEP 7: Async Processing
-            ProcessChatResponse::dispatch($user, $message);
+            // STEP 7: Async Processing (pass image path to job)
+            ProcessChatResponse::dispatch($user, $userMessage, $imagePath);
 
             // Dispatch background job to extract memories (every 10th message)
             $messageCount = Message::where('user_id', $user->id)->count();
