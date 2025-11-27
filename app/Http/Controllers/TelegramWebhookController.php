@@ -138,7 +138,7 @@ class TelegramWebhookController extends Controller
             // STEP 5: UX Indicator (CRITICAL - Prevent "Ghost" silence)
             Telegram::sendChatAction($chatId, 'typing');
 
-            // STEP 6: Save User Message
+            // STEP 6: Save User Message (for raw logs)
             $userMessage = Message::create([
                 'user_id' => $user->id,
                 'persona_id' => $user->persona?->id,
@@ -150,8 +150,29 @@ class TelegramWebhookController extends Controller
             // Update last interaction timestamp
             $user->update(['last_interaction_at' => now()]);
 
-            // STEP 7: Async Processing (pass image path to job)
-            ProcessChatResponse::dispatch($user, $userMessage, $imagePath);
+            // STEP 7: Buffer Management (Debounce Pattern)
+            if ($imagePath) {
+                // Images bypass buffering (process immediately)
+                ProcessChatResponse::dispatch($user, $imagePath)->delay(now()->addSeconds(2));
+            } else {
+                // Text messages: Append to buffer
+                $bufferKey = "chat_buffer_{$chatId}";
+                $existingBuffer = \Illuminate\Support\Facades\Cache::get($bufferKey, '');
+                
+                $newBuffer = $existingBuffer 
+                    ? $existingBuffer . "\n" . $text 
+                    : $text;
+                
+                \Illuminate\Support\Facades\Cache::put($bufferKey, $newBuffer, now()->addSeconds(60));
+                
+                Log::info('TelegramWebhookController: Message buffered', [
+                    'chat_id' => $chatId,
+                    'buffer_length' => strlen($newBuffer),
+                ]);
+                
+                // Dispatch delayed job (10 seconds debounce)
+                ProcessChatResponse::dispatch($user, null)->delay(now()->addSeconds(10));
+            }
 
             // Dispatch background job to extract memories (every 10th message)
             $messageCount = Message::where('user_id', $user->id)->count();

@@ -27,10 +27,12 @@ class ProcessChatResponse implements ShouldQueue
 
     /**
      * Create a new job instance.
+     *
+     * @param User $user The user to process chat for
+     * @param string|null $imagePath Optional image path (bypasses buffering)
      */
     public function __construct(
         public User $user,
-        public Message $incomingMessage,
         public ?string $imagePath = null
     ) {}
 
@@ -49,46 +51,104 @@ class ProcessChatResponse implements ShouldQueue
                 return;
             }
 
-            // Send typing indicator
-            Telegram::sendChatAction($this->user->telegram_chat_id, 'typing');
+            // STEP 1: Atomic Lock (Prevent concurrent processing)
+            $lockKey = "processing_chat_{$this->user->id}";
+            $lock = \Illuminate\Support\Facades\Cache::lock($lockKey, 10);
 
-            // Get recent chat history (last 20 messages)
-            $chatHistory = Message::where('user_id', $this->user->id)
-                ->latest()
-                ->take(20)
-                ->get()
-                ->reverse()
-                ->values();
-
-            // Get memory tags
-            $memoryTags = $persona->memoryTags;
-
-            // Generate AI response with media processing (pass image path for vision)
-            $response = GeminiBrain::generateChatResponse(
-                $chatHistory,
-                $memoryTags,
-                $persona->system_prompt,
-                $persona,
-                $this->imagePath
-            );
-
-            // Process media tags and send appropriate messages
-            // NOTE: sendResponseToTelegram() handles saving to DB (CRITICAL for context)
-            $this->sendResponseToTelegram($response);
-
-            // Cleanup: Delete temporary image file after processing
-            if ($this->imagePath && file_exists($this->imagePath)) {
-                unlink($this->imagePath);
-                Log::info('ProcessChatResponse: Temp image file deleted', [
-                    'path' => $this->imagePath,
+            if (!$lock->get()) {
+                Log::info('ProcessChatResponse: Another instance is processing, skipping', [
+                    'user_id' => $this->user->id,
                 ]);
+                return;
             }
 
-            Log::info('ProcessChatResponse: Response sent successfully', [
-                'user_id' => $this->user->id,
-                'response_length' => strlen($response),
-                'had_image' => $this->imagePath !== null,
-            ]);
+            try {
+                // STEP 2: Fetch & Clear Buffer (or use image path)
+                $aggregatedText = null;
+                
+                if ($this->imagePath) {
+                    // Image path provided: process immediately without buffer
+                    $aggregatedText = null; // Will use latest message
+                } else {
+                    // Text message: fetch from buffer
+                    $bufferKey = "chat_buffer_{$this->user->telegram_chat_id}";
+                    $aggregatedText = \Illuminate\Support\Facades\Cache::pull($bufferKey);
+                    
+                    if (empty($aggregatedText)) {
+                        Log::info('ProcessChatResponse: Buffer empty, already processed', [
+                            'user_id' => $this->user->id,
+                        ]);
+                        $lock->release();
+                        return;
+                    }
+                    
+                    Log::info('ProcessChatResponse: Processing buffered messages', [
+                        'user_id' => $this->user->id,
+                        'aggregated_length' => strlen($aggregatedText),
+                        'message_count' => substr_count($aggregatedText, "\n") + 1,
+                    ]);
+                }
+
+                // Send typing indicator
+                Telegram::sendChatAction($this->user->telegram_chat_id, 'typing');
+
+                // STEP 3: Get chat history (last 20 messages excluding the current buffer)
+                $chatHistory = Message::where('user_id', $this->user->id)
+                    ->latest()
+                    ->take(20)
+                    ->get()
+                    ->reverse()
+                    ->values();
+
+                // Get memory tags
+                $memoryTags = $persona->memoryTags;
+
+                // STEP 4: Generate AI response
+                if ($aggregatedText) {
+                    // Create a temporary message object for buffered text
+                    $bufferMessage = new Message([
+                        'user_id' => $this->user->id,
+                        'persona_id' => $persona->id,
+                        'sender_type' => 'user',
+                        'content' => $aggregatedText,
+                        'created_at' => now(),
+                    ]);
+                    
+                    // Append to history for context
+                    $chatHistory->push($bufferMessage);
+                }
+
+                $response = GeminiBrain::generateChatResponse(
+                    $chatHistory,
+                    $memoryTags,
+                    $persona->system_prompt,
+                    $persona,
+                    $this->imagePath
+                );
+
+                // STEP 5: Send response to Telegram
+                // NOTE: sendResponseToTelegram() handles saving to DB (CRITICAL for context)
+                $this->sendResponseToTelegram($response);
+
+                // STEP 6: Cleanup temp image file
+                if ($this->imagePath && file_exists($this->imagePath)) {
+                    unlink($this->imagePath);
+                    Log::info('ProcessChatResponse: Temp image file deleted', [
+                        'path' => $this->imagePath,
+                    ]);
+                }
+
+                Log::info('ProcessChatResponse: Response sent successfully', [
+                    'user_id' => $this->user->id,
+                    'response_length' => strlen($response),
+                    'had_image' => $this->imagePath !== null,
+                    'was_buffered' => $aggregatedText !== null,
+                ]);
+
+            } finally {
+                // Always release the lock
+                $lock->release();
+            }
 
         } catch (\Exception $e) {
             Log::error('ProcessChatResponse: Job failed', [

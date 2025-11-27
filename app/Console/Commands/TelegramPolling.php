@@ -137,7 +137,7 @@ class TelegramPolling extends Command
             // Send typing indicator
             Telegram::sendChatAction($data['chat_id'], 'typing');
 
-            // Save message
+            // Save message (for raw logs)
             $message = Message::create([
                 'user_id' => $user->id,
                 'persona_id' => $user->persona?->id,
@@ -148,8 +148,26 @@ class TelegramPolling extends Command
 
             $this->info('Message saved, dispatching response job...');
 
-            // Dispatch response job with image path
-            ProcessChatResponse::dispatch($user, $message, $imagePath);
+            // Buffer Management (Debounce Pattern)
+            if ($imagePath) {
+                // Images bypass buffering (process immediately)
+                ProcessChatResponse::dispatch($user, $imagePath)->delay(now()->addSeconds(2));
+            } else {
+                // Text messages: Append to buffer
+                $bufferKey = "chat_buffer_{$data['chat_id']}";
+                $existingBuffer = \Illuminate\Support\Facades\Cache::get($bufferKey, '');
+                
+                $newBuffer = $existingBuffer 
+                    ? $existingBuffer . "\n" . $text 
+                    : $text;
+                
+                \Illuminate\Support\Facades\Cache::put($bufferKey, $newBuffer, now()->addSeconds(60));
+                
+                $this->info("Buffered: {$text}");
+                
+                // Dispatch delayed job (10 seconds debounce)
+                ProcessChatResponse::dispatch($user, null)->delay(now()->addSeconds(10));
+            }
 
             // Extract memories every 10 messages
             $messageCount = Message::where('user_id', $user->id)->count();
