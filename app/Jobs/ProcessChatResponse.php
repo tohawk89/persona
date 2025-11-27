@@ -230,10 +230,14 @@ class ProcessChatResponse implements ShouldQueue
             // Send "Uploading Photo" action
             Telegram::sendChatAction($this->user->telegram_chat_id, 'upload_photo');
 
+            // Clean caption: remove <SPLIT> tags (they're for text messages only)
+            $cleanCaption = $textPart ? str_replace(['<SPLIT>', '<split>'], '', $textPart) : null;
+            $cleanCaption = $cleanCaption ? trim($cleanCaption) : null;
+
             Telegram::sendPhoto(
                 $this->user->telegram_chat_id,
                 $imageUrl,
-                $textPart ?: null // Use text as caption
+                $cleanCaption
             );
 
             // CRITICAL: Save bot message with image to DB
@@ -241,7 +245,7 @@ class ProcessChatResponse implements ShouldQueue
                 'user_id' => $this->user->id,
                 'persona_id' => $this->user->persona?->id,
                 'sender_type' => 'bot',
-                'content' => $textPart ?: '[Image]',
+                'content' => $cleanCaption ?: '[Image]',
                 'image_path' => $imageUrl,
             ]);
         }
