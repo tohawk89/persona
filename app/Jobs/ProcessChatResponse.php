@@ -65,7 +65,7 @@ class ProcessChatResponse implements ShouldQueue
             try {
                 // STEP 2: Fetch & Clear Buffer (or use image path)
                 $aggregatedText = null;
-                
+
                 if ($this->imagePath) {
                     // Image path provided: process immediately without buffer
                     $aggregatedText = null; // Will use latest message
@@ -73,7 +73,7 @@ class ProcessChatResponse implements ShouldQueue
                     // Text message: fetch from buffer
                     $bufferKey = "chat_buffer_{$this->user->telegram_chat_id}";
                     $aggregatedText = \Illuminate\Support\Facades\Cache::pull($bufferKey);
-                    
+
                     if (empty($aggregatedText)) {
                         Log::info('ProcessChatResponse: Buffer empty, already processed', [
                             'user_id' => $this->user->id,
@@ -81,7 +81,7 @@ class ProcessChatResponse implements ShouldQueue
                         $lock->release();
                         return;
                     }
-                    
+
                     Log::info('ProcessChatResponse: Processing buffered messages', [
                         'user_id' => $this->user->id,
                         'aggregated_length' => strlen($aggregatedText),
@@ -113,7 +113,7 @@ class ProcessChatResponse implements ShouldQueue
                         'content' => $aggregatedText,
                         'created_at' => now(),
                     ]);
-                    
+
                     // Append to history for context
                     $chatHistory->push($bufferMessage);
                 }

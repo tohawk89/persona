@@ -156,15 +156,15 @@ class TelegramPolling extends Command
                 // Text messages: Append to buffer
                 $bufferKey = "chat_buffer_{$data['chat_id']}";
                 $existingBuffer = \Illuminate\Support\Facades\Cache::get($bufferKey, '');
-                
-                $newBuffer = $existingBuffer 
-                    ? $existingBuffer . "\n" . $text 
+
+                $newBuffer = $existingBuffer
+                    ? $existingBuffer . "\n" . $text
                     : $text;
-                
+
                 \Illuminate\Support\Facades\Cache::put($bufferKey, $newBuffer, now()->addSeconds(60));
-                
+
                 $this->info("Buffered: {$text}");
-                
+
                 // Dispatch delayed job (10 seconds debounce)
                 ProcessChatResponse::dispatch($user, null)->delay(now()->addSeconds(10));
             }
