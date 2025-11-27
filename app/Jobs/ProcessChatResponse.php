@@ -126,7 +126,21 @@ class ProcessChatResponse implements ShouldQueue
                     $this->imagePath
                 );
 
-                // STEP 4.5: Extract and save real-time mood
+                // STEP 4.5: Check for [NO_REPLY] tag (conversation end)
+                if (trim($response) === '[NO_REPLY]') {
+                    Log::info('ProcessChatResponse: Bot chose to end conversation (no reply sent)', [
+                        'user_id' => $this->user->id,
+                    ]);
+
+                    // Cleanup temp image file if exists
+                    if ($this->imagePath && file_exists($this->imagePath)) {
+                        unlink($this->imagePath);
+                    }
+
+                    return; // Exit early without sending message
+                }
+
+                // STEP 4.6: Extract and save real-time mood
                 if (preg_match('/\[MOOD:\s*(.+?)\]/', $response, $moodMatch)) {
                     $moodValue = trim($moodMatch[1]);
 
