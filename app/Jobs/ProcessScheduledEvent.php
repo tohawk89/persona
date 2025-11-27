@@ -44,36 +44,67 @@ class ProcessScheduledEvent implements ShouldQueue
                     return;
                 }
 
-                // Send appropriate message type
+                // ===== JUST-IN-TIME GENERATION =====
+                // Generate response dynamically based on current context
+                $generatedResponse = \App\Facades\GeminiBrain::generateEventResponse(
+                    $event,
+                    $event->persona
+                );
+
+                Log::info('ProcessScheduledEvent: JIT response generated', [
+                    'event_id' => $event->id,
+                    'instruction' => $event->context_prompt,
+                    'generated_length' => strlen($generatedResponse),
+                ]);
+
+                // Send appropriate message type based on event type
                 if ($event->type === 'text') {
+                    // Text event - send the generated response
                     Telegram::sendStreamingMessage(
                         $user->telegram_chat_id,
-                        $event->context_prompt
+                        $generatedResponse
                     );
                 } elseif ($event->type === 'image_generation') {
-                    // Show upload photo indicator
-                    Telegram::sendChatAction($user->telegram_chat_id, 'upload_photo');
-
-                    // Generate and send image
-                    $imageUrl = \App\Facades\GeminiBrain::generateImage(
-                        $event->context_prompt,
-                        $event->persona
-                    );
-
-                    if ($imageUrl) {
-                        Telegram::sendPhoto(
+                    // Image generation event - response may contain [GENERATE_IMAGE:] tag
+                    if (str_contains($generatedResponse, '[GENERATE_IMAGE:')) {
+                        // Image tag will be processed and replaced with [IMAGE: url]
+                        Telegram::sendStreamingMessage(
                             $user->telegram_chat_id,
-                            $imageUrl,
-                            "Here's something for you! 📸"
+                            $generatedResponse
                         );
                     } else {
-                        // Fallback to text if image generation fails
-                        Telegram::sendMessage(
-                            $user->telegram_chat_id,
-                            "I wanted to share something special with you, but I'm having trouble with the image right now 😔"
+                        // No image tag in response, generate based on instruction
+                        Telegram::sendChatAction($user->telegram_chat_id, 'upload_photo');
+
+                        $imageUrl = \App\Facades\GeminiBrain::generateImage(
+                            $event->context_prompt,
+                            $event->persona
                         );
+
+                        if ($imageUrl) {
+                            Telegram::sendPhoto(
+                                $user->telegram_chat_id,
+                                $imageUrl,
+                                $generatedResponse
+                            );
+                        } else {
+                            // Fallback to text if image generation fails
+                            Telegram::sendMessage(
+                                $user->telegram_chat_id,
+                                $generatedResponse
+                            );
+                        }
                     }
                 }
+
+                // Save the generated message to database for context
+                $event->persona->messages()->create([
+                    'user_id' => $user->id,
+                    'persona_id' => $event->persona->id,
+                    'sender_type' => 'bot',
+                    'content' => strip_tags(preg_replace('/\[(IMAGE|AUDIO|MOOD|NO_REPLY):.*?\]/', '', $generatedResponse)),
+                    'is_event_trigger' => true,
+                ]);
 
                 // Mark event as sent
                 $event->update(['status' => 'sent']);

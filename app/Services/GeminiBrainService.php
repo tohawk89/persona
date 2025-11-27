@@ -257,6 +257,108 @@ PROMPT;
     }
 
     /**
+     * Generate a just-in-time response for a scheduled event.
+     * This treats the event's context_prompt as an instruction, not final text.
+     *
+     * @param EventSchedule $event The scheduled event with instruction
+     * @param Persona $persona The persona
+     * @return string The generated response (may contain media tags)
+     */
+    public function generateEventResponse(EventSchedule $event, Persona $persona): string
+    {
+        try {
+            // Get current mood from memory tags
+            $currentMood = $persona->memoryTags()
+                ->where('category', 'current_mood')
+                ->where('target', 'self')
+                ->first();
+            $moodContext = $currentMood
+                ? "CURRENT EMOTIONAL STATE: You are currently feeling [{$currentMood->value}]. This should naturally influence your tone and message style.\n\n"
+                : "";
+
+            // Get recent chat history (last 5 messages)
+            $recentMessages = $persona->messages()
+                ->orderBy('created_at', 'desc')
+                ->limit(5)
+                ->get()
+                ->reverse();
+
+            $conversationHistory = $this->buildConversationHistory($recentMessages);
+
+            // Get relevant memory context
+            $memoryTags = $persona->memoryTags;
+            $memoryContext = $this->buildMemoryContext($memoryTags);
+
+            // Get media usage instructions
+            $mediaInstructions = $this->buildMediaInstructions($persona);
+
+            // Construct the JIT generation prompt
+            $fullPrompt = <<<PROMPT
+{$persona->system_prompt}
+
+{$moodContext}MEMORY CONTEXT:
+{$memoryContext}
+
+RECENT CONVERSATION HISTORY:
+{$conversationHistory}
+
+===== SYSTEM EVENT TRIGGER =====
+It is time to execute this planned event:
+"{$event->context_prompt}"
+
+INSTRUCTIONS:
+- Generate a natural, contextually appropriate message based on the event instruction above
+- Take into account your CURRENT EMOTIONAL STATE and how it affects your communication
+- Reference the RECENT CONVERSATION HISTORY if relevant to make the message feel connected
+- DO NOT just copy the event instruction—interpret it and make it natural and engaging
+{$mediaInstructions}
+
+CRITICAL FORMATTING RULE:
+- NEVER send walls of text or multiple paragraphs in one message
+- ALWAYS separate each distinct thought, question, or paragraph with <SPLIT>
+- Examples:
+  * "Good morning sayang! <SPLIT> Did you sleep well? <SPLIT> I missed you 💕"
+  * "Here's a selfie for you! <SPLIT> [GENERATE_IMAGE: description] <SPLIT> What do you think? 😊"
+
+REAL-TIME MOOD TRACKING (MANDATORY):
+- At the very END of your response, output your current emotional state: `[MOOD: value]`
+- Examples: 'Good morning! 🌞 [MOOD: Cheerful]' or 'Feeling tired today... [MOOD: Exhausted]'
+- This tag will be hidden from the user, so be honest about your feelings
+
+Generate your response now:
+PROMPT;
+
+            $apiKey = config('services.gemini.api_key');
+            $client = Gemini::client($apiKey);
+
+            // Generate response with retry logic
+            $textResponse = $this->callGeminiWithRetry($client, $fullPrompt);
+
+            // Process media tags (images and voice notes)
+            $textResponse = $this->processImageTags($textResponse, $persona);
+            $textResponse = $this->processVoiceTags($textResponse, $persona);
+
+            Log::info('GeminiBrainService: Event response generated', [
+                'event_id' => $event->id,
+                'event_instruction' => $event->context_prompt,
+                'response_length' => strlen($textResponse),
+                'has_image' => str_contains($textResponse, '[IMAGE:'),
+                'has_voice' => str_contains($textResponse, '[AUDIO:'),
+            ]);
+
+            return $textResponse;
+        } catch (\Exception $e) {
+            Log::error('GeminiBrainService: Event response generation failed', [
+                'event_id' => $event->id,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return "Adoi, ada masalah sikit... 💭";
+        }
+    }
+
+    /**
      * Generate a daily event plan based on memory tags.
      * Returns a JSON array of events.
      *
@@ -283,13 +385,27 @@ PROMPT;
 MEMORY CONTEXT:
 {$memoryContext}
 
-TASK: Generate a daily plan with {$eventCount} events for today ({$today}).
+TASK: Generate a daily plan with {$eventCount} event INSTRUCTIONS for today ({$today}).
 - Wake time: {$wakeTime}
 - Sleep time: {$sleepTime}
 - Each event should be spread throughout the day
 - Mix of text messages and image generation prompts
 - Events should be natural, engaging, and relevant to the memory context
 - Use type "text" for text messages and "image_generation" for image prompts
+
+CRITICAL INSTRUCTION FORMAT:
+- DO NOT write the final message text
+- Instead, write a GOAL or INSTRUCTION that will be interpreted later
+- The instruction should describe WHAT to communicate, not HOW
+- Examples:
+  * BAD: "Good morning! Hope you slept well 😊"
+  * GOOD: "Send morning greeting. Ask how they slept."
+
+  * BAD: "Here's a selfie at the coffee shop! ☕"
+  * GOOD: "Send selfie at coffee shop. Mention you're enjoying coffee."
+
+  * BAD: "Just finished work! So tired 😫"
+  * GOOD: "Share that you just finished work and feeling exhausted."
 
 IMPORTANT: Also decide on your outfit for the day:
 - Choose a daily outfit (e.g., "white floral sundress", "office wear - black blazer and slacks", "casual jeans and pink hoodie")
@@ -302,12 +418,12 @@ OUTPUT FORMAT (JSON only, no markdown):
   "events": [
     {
       "type": "text",
-      "content": "Good morning! Hope you slept well 😊",
+      "content": "Send morning greeting. Ask how they slept.",
       "scheduled_at": "{$today} 08:00:00"
     },
     {
       "type": "image_generation",
-      "content": "A cozy coffee shop scene with morning sunlight",
+      "content": "Send selfie at coffee shop. Mention enjoying morning coffee.",
       "scheduled_at": "{$today} 10:30:00"
     }
   ]
@@ -315,7 +431,7 @@ OUTPUT FORMAT (JSON only, no markdown):
 
 IMPORTANT: For image generation events, use type "image_generation" (not "image")
 
-Generate the JSON object now:
+Generate the JSON object now with event INSTRUCTIONS (not final messages):
 PROMPT;
 
             $apiKey = config('services.gemini.api_key');
@@ -1177,17 +1293,17 @@ IMAGE;
         return [
             [
                 'type' => 'text',
-                'content' => 'Good morning! 🌅',
+                'content' => 'Send morning greeting. Ask how they slept.',
                 'scheduled_at' => "{$date} {$wakeTime}:00",
             ],
             [
                 'type' => 'text',
-                'content' => 'How are you doing today?',
+                'content' => 'Check in on how their day is going.',
                 'scheduled_at' => "{$date} 12:00:00",
             ],
             [
                 'type' => 'text',
-                'content' => 'Hope your day is going well! ✨',
+                'content' => 'Send encouraging message about their day.',
                 'scheduled_at' => "{$date} 16:00:00",
             ],
         ];
