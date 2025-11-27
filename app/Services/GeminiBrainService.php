@@ -13,6 +13,7 @@ use Illuminate\Support\Str;
 use App\Models\Persona;
 use App\Models\MemoryTag;
 use App\Models\EventSchedule;
+use App\Contracts\ImageGeneratorInterface;
 
 class GeminiBrainService
 {
@@ -27,6 +28,10 @@ class GeminiBrainService
     private const IMAGE_NUM_STEPS = 4;
     private const NIGHT_TIME_START = 21; // 9 PM
     private const NIGHT_TIME_END = 6; // 6 AM
+
+    public function __construct(private readonly ImageGeneratorInterface $imageGenerator)
+    {
+    }
 
     // ============================================================================
     // PUBLIC API METHODS
@@ -477,62 +482,24 @@ PROMPT;
     public function generateImage(string $prompt, Persona $persona): ?string
     {
         try {
-            $accountId = config('services.cloudflare.account_id');
-            $apiToken = config('services.cloudflare.api_token');
-
-            if (!$accountId || !$apiToken) {
-                Log::error('GeminiBrainService: Cloudflare credentials not configured');
-                return null;
-            }
-
-            // Build enhanced prompt with safety, traits, and styling
             $enhancedPrompt = $this->buildImagePrompt($prompt, $persona);
 
-            Log::info('GeminiBrainService: Generating image with Cloudflare AI', [
+            Log::info('GeminiBrainService: Generating image via driver', [
                 'original_prompt' => $prompt,
                 'enhanced_prompt' => $enhancedPrompt,
+                'driver' => config('services.image_generator.default', 'cloudflare'),
             ]);
 
-            // Store persona for later use
             $this->currentPersona = $persona;
 
-            // Call Cloudflare Workers AI API
-            $response = $this->callCloudflareImageAPI($accountId, $apiToken, $enhancedPrompt);
+            $url = $this->imageGenerator->generate($enhancedPrompt, $persona);
 
-            if (!$response->successful()) {
-                $errorBody = $response->body();
-
-                Log::error('GeminiBrainService: Cloudflare API request failed', [
-                    'status' => $response->status(),
-                    'body' => $errorBody,
-                ]);
-
-                // Check if it's an NSFW content error
-                if ($response->status() === 400 && str_contains($errorBody, 'NSFW')) {
-                    Log::warning('GeminiBrainService: Prompt flagged as NSFW, attempting with safer prompt');
-
-                    // Retry with an extremely safe, minimal prompt
-                    $safePrompt = "Close-up portrait photograph, artistic framing showing partial face. Professional photography, soft lighting, high quality.";
-                    $response = $this->callCloudflareImageAPI($accountId, $apiToken, $safePrompt);
-
-                    if (!$response->successful()) {
-                        Log::error('GeminiBrainService: Retry with safe prompt also failed');
-                        return null;
-                    }
-                } else {
-                    return null;
-                }
-            }
-
-            // Process and save the generated image with persona context
-            return $this->saveGeneratedImage($response, $persona);
-
+            return $url ?: null;
         } catch (\Exception $e) {
             Log::error('GeminiBrainService: Image generation failed', [
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
             ]);
-
             return null;
         }
     }
@@ -699,97 +666,7 @@ PROMPT;
             ->value('value');
     }
 
-    // ============================================================================
-    // CLOUDFLARE API METHODS
-    // ============================================================================
-
-    /**
-     * Call Cloudflare Workers AI image generation API.
-     */
-    private function callCloudflareImageAPI(string $accountId, string $apiToken, string $prompt)
-    {
-        $endpoint = "https://api.cloudflare.com/client/v4/accounts/{$accountId}/ai/run/" . self::CLOUDFLARE_MODEL;
-
-        return Http::timeout(30)
-            ->withHeaders(['Authorization' => "Bearer {$apiToken}"])
-            ->post($endpoint, [
-                'prompt' => $prompt,
-                'num_steps' => self::IMAGE_NUM_STEPS,
-            ]);
-    }
-
-    /**
-     * Save generated image from Cloudflare response using MediaLibrary.
-     */
-    private function saveGeneratedImage($response, ?Persona $persona = null): ?string
-    {
-        $data = $response->json();
-
-        if (!isset($data['result']['image'])) {
-            Log::error('GeminiBrainService: No image in Cloudflare response', [
-                'response' => $data,
-            ]);
-            return null;
-        }
-
-        // Decode Base64 image
-        $base64Image = $data['result']['image'];
-        $decodedImage = base64_decode($base64Image);
-
-        if ($decodedImage === false) {
-            Log::error('GeminiBrainService: Failed to decode Base64 image');
-            return null;
-        }
-
-        // Generate unique filename and save temporarily
-        $filename = Str::uuid() . '.jpg';
-        $tempPath = sys_get_temp_dir() . '/' . $filename;
-        file_put_contents($tempPath, $decodedImage);
-
-        // If persona is available, use MediaLibrary
-        if ($persona) {
-            try {
-                $media = $persona->addMedia($tempPath)
-                    ->usingFileName($filename)
-                    ->toMediaCollection('generated_images');
-
-                $url = $media->getUrl();
-
-                // Clean up temp file
-                @unlink($tempPath);
-
-                Log::info('GeminiBrainService: Image generated successfully via MediaLibrary', [
-                    'filename' => $filename,
-                    'url' => $url,
-                    'media_id' => $media->id,
-                ]);
-
-                return $url;
-            } catch (\Exception $e) {
-                // Clean up temp file on error
-                @unlink($tempPath);
-                Log::error('GeminiBrainService: MediaLibrary save failed', [
-                    'error' => $e->getMessage(),
-                ]);
-                return null;
-            }
-        }
-
-        // Fallback to Storage if no persona (shouldn't happen in normal flow)
-        $path = "generated_images/{$filename}";
-        Storage::disk('public')->put($path, $decodedImage);
-        $url = asset('storage/' . $path);
-
-        // Clean up temp file
-        @unlink($tempPath);
-
-        Log::info('GeminiBrainService: Image generated successfully (fallback)', [
-            'filename' => $filename,
-            'url' => $url,
-        ]);
-
-        return $url;
-    }
+    // (Cloudflare-specific methods removed; handled by drivers)
 
     // ============================================================================
     // GEMINI API METHODS

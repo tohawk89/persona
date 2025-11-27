@@ -54,4 +54,17 @@ return [
         'voice_id' => env('ELEVENLABS_VOICE_ID'),
     ],
 
+    'image_generator' => [
+        'default' => env('IMAGE_GENERATOR_DRIVER', 'cloudflare'),
+        'drivers' => [
+            'cloudflare' => [
+                'account_id' => env('CLOUDFLARE_ACCOUNT_ID'),
+                'api_token' => env('CLOUDFLARE_API_TOKEN'),
+            ],
+            'kie_ai' => [
+                'api_key' => env('KIE_AI_API_KEY'),
+            ],
+        ],
+    ],
+
 ];

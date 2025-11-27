@@ -101,13 +101,13 @@ class TelegramService
                 // MediaLibrary format: /storage/{media_id}/filename.jpg
                 // Old format: /storage/generated_images/filename.jpg
                 $path = parse_url($photo, PHP_URL_PATH);
-                
+
                 // Remove /storage prefix
                 $relativePath = str_replace('/storage/', '', $path);
-                
+
                 // Try MediaLibrary path first (storage/app/public/{media_id}/filename.jpg)
                 $localPath = storage_path('app/public/' . $relativePath);
-                
+
                 // If not found, try legacy public_path for old format
                 if (!file_exists($localPath)) {
                     $localPath = public_path('storage/' . $relativePath);
@@ -176,13 +176,13 @@ class TelegramService
                 // MediaLibrary format: /storage/{media_id}/filename.mp3
                 // Old format: /storage/voice_notes/filename.mp3
                 $path = parse_url($voice, PHP_URL_PATH);
-                
+
                 // Remove /storage prefix
                 $relativePath = str_replace('/storage/', '', $path);
-                
+
                 // Try MediaLibrary path first (storage/app/public/{media_id}/filename.mp3)
                 $localPath = storage_path('app/public/' . $relativePath);
-                
+
                 // If not found, try legacy public_path for old format
                 if (!file_exists($localPath)) {
                     $localPath = public_path('storage/' . $relativePath);
