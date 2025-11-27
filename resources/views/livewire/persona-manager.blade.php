@@ -24,30 +24,100 @@
                         @error('name') <span class="text-red-500 text-sm">{{ $message }}</span> @enderror
                     </div>
 
-                    <!-- System Prompt -->
-                    <div>
-                        <label for="system_prompt" class="block text-sm font-medium mb-2">System Prompt *</label>
-                        <textarea
-                            wire:model="system_prompt"
-                            id="system_prompt"
-                            rows="6"
-                            class="w-full px-4 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                            placeholder="Define the persona's character, behavior, and how it should interact..."
-                        ></textarea>
-                        @error('system_prompt') <span class="text-red-500 text-sm">{{ $message }}</span> @enderror
+                    <!-- Personality Section (2-Stage) -->
+                    <div class="border border-gray-300 dark:border-gray-600 rounded-lg p-6 space-y-4">
+                        <h3 class="text-lg font-semibold mb-4">🧠 Personality Configuration</h3>
+                        
+                        <!-- Stage 1: Raw Concept -->
+                        <div>
+                            <label for="about_description" class="block text-sm font-medium mb-2">
+                                💭 Concept (Your Idea)
+                            </label>
+                            <textarea
+                                wire:model="about_description"
+                                id="about_description"
+                                rows="4"
+                                class="w-full px-4 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                placeholder="Rough idea: 'Friendly Malaysian girl, loves anime, uses Manglish...'"
+                            ></textarea>
+                            @error('about_description') <span class="text-red-500 text-sm">{{ $message }}</span> @enderror
+                        </div>
+
+                        <!-- Optimize Button -->
+                        <div class="flex justify-center">
+                            <button
+                                type="button"
+                                wire:click="optimizeSystemPrompt"
+                                class="px-6 py-2 bg-purple-600 hover:bg-purple-700 text-white font-medium rounded-lg transition-colors duration-200 flex items-center space-x-2"
+                            >
+                                <span>✨</span>
+                                <span>Generate System Prompt</span>
+                            </button>
+                        </div>
+
+                        <!-- Stage 2: Optimized Output -->
+                        <div>
+                            <label for="system_prompt" class="block text-sm font-medium mb-2">
+                                📋 Final Instruction (Optimized) *
+                            </label>
+                            <textarea
+                                wire:model="system_prompt"
+                                id="system_prompt"
+                                rows="8"
+                                class="w-full px-4 py-2 bg-white dark:bg-gray-800 border-2 border-purple-300 dark:border-purple-600 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent font-mono text-sm"
+                                placeholder="AI-optimized system prompt will appear here..."
+                            ></textarea>
+                            <p class="text-xs text-gray-500 mt-1">You can manually edit this if needed</p>
+                            @error('system_prompt') <span class="text-red-500 text-sm">{{ $message }}</span> @enderror
+                        </div>
                     </div>
 
-                    <!-- Physical Traits -->
-                    <div>
-                        <label for="physical_traits" class="block text-sm font-medium mb-2">Physical Traits (for Image Generation)</label>
-                        <textarea
-                            wire:model="physical_traits"
-                            id="physical_traits"
-                            rows="4"
-                            class="w-full px-4 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                            placeholder="Describe physical appearance: hair color, eye color, style, etc..."
-                        ></textarea>
-                        @error('physical_traits') <span class="text-red-500 text-sm">{{ $message }}</span> @enderror
+                    <!-- Appearance Section (2-Stage) -->
+                    <div class="border border-gray-300 dark:border-gray-600 rounded-lg p-6 space-y-4">
+                        <h3 class="text-lg font-semibold mb-4">👤 Appearance Configuration</h3>
+                        
+                        <!-- Stage 1: Raw Concept -->
+                        <div>
+                            <label for="appearance_description" class="block text-sm font-medium mb-2">
+                                💭 Visual Concept (Your Idea)
+                            </label>
+                            <textarea
+                                wire:model="appearance_description"
+                                id="appearance_description"
+                                rows="3"
+                                class="w-full px-4 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                placeholder="Rough idea: 'Short black hair, brown eyes, casual style...'"
+                            ></textarea>
+                            @error('appearance_description') <span class="text-red-500 text-sm">{{ $message }}</span> @enderror
+                        </div>
+
+                        <!-- Optimize Button -->
+                        <div class="flex justify-center">
+                            <button
+                                type="button"
+                                wire:click="optimizePhysicalTraits"
+                                class="px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-lg transition-colors duration-200 flex items-center space-x-2"
+                            >
+                                <span>✨</span>
+                                <span>Generate Traits</span>
+                            </button>
+                        </div>
+
+                        <!-- Stage 2: Optimized Output -->
+                        <div>
+                            <label for="physical_traits" class="block text-sm font-medium mb-2">
+                                🎨 Final Image Prompt (Optimized)
+                            </label>
+                            <textarea
+                                wire:model="physical_traits"
+                                id="physical_traits"
+                                rows="5"
+                                class="w-full px-4 py-2 bg-white dark:bg-gray-800 border-2 border-indigo-300 dark:border-indigo-600 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent font-mono text-sm"
+                                placeholder="AI-optimized physical description will appear here..."
+                            ></textarea>
+                            <p class="text-xs text-gray-500 mt-1">You can manually edit this if needed</p>
+                            @error('physical_traits') <span class="text-red-500 text-sm">{{ $message }}</span> @enderror
+                        </div>
                     </div>
 
                     <!-- Wake and Sleep Times -->

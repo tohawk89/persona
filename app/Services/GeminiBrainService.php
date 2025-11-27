@@ -103,6 +103,29 @@ PROMPT;
     }
 
     /**
+     * Simple Gemini API call for general-purpose text generation.
+     *
+     * @param string $prompt The prompt to send to Gemini
+     * @return string The AI's response
+     */
+    public function callGemini(string $prompt): string
+    {
+        try {
+            $apiKey = config('services.gemini.api_key');
+            $client = Gemini::client($apiKey);
+            
+            $result = $client->geminiPro()->generateContent($prompt);
+            return $result->text();
+        } catch (\Exception $e) {
+            Log::error('GeminiBrainService: Simple Gemini call failed', [
+                'error' => $e->getMessage(),
+                'prompt_length' => strlen($prompt),
+            ]);
+            throw $e;
+        }
+    }
+
+    /**
      * Generate a conversational response based on chat history and memory tags.
      * Supports multimodal input (text + image) via Gemini Vision API.
      *

@@ -6,13 +6,16 @@ use Livewire\Component;
 use Livewire\WithFileUploads;
 use App\Models\Persona;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Log;
 
 class PersonaManager extends Component
 {
     use WithFileUploads;
 
     public $name;
+    public $about_description;
     public $system_prompt;
+    public $appearance_description;
     public $physical_traits;
     public $wake_time;
     public $sleep_time;
@@ -25,7 +28,9 @@ class PersonaManager extends Component
 
     protected $rules = [
         'name' => 'required|string|max:255',
+        'about_description' => 'nullable|string',
         'system_prompt' => 'required|string|min:10',
+        'appearance_description' => 'nullable|string',
         'physical_traits' => 'nullable|string',
         'wake_time' => 'required|date_format:H:i',
         'sleep_time' => 'required|date_format:H:i',
@@ -41,7 +46,9 @@ class PersonaManager extends Component
 
         if ($this->persona) {
             $this->name = $this->persona->name;
+            $this->about_description = $this->persona->about_description;
             $this->system_prompt = $this->persona->system_prompt;
+            $this->appearance_description = $this->persona->appearance_description;
             $this->physical_traits = $this->persona->physical_traits;
             // Convert HH:MM:SS to HH:MM for time input
             $this->wake_time = substr($this->persona->wake_time, 0, 5);
@@ -88,7 +95,9 @@ class PersonaManager extends Component
 
         $data = [
             'name' => $this->name,
+            'about_description' => $this->about_description,
             'system_prompt' => $this->system_prompt,
+            'appearance_description' => $this->appearance_description,
             'physical_traits' => $this->physical_traits,
             'wake_time' => $this->wake_time,
             'sleep_time' => $this->sleep_time,
@@ -128,6 +137,78 @@ class PersonaManager extends Component
                 $media->delete();
                 session()->flash('success', 'Image deleted successfully!');
             }
+        }
+    }
+
+    public function optimizeSystemPrompt()
+    {
+        if (empty($this->about_description)) {
+            session()->flash('error', 'Please enter a personality concept first.');
+            return;
+        }
+
+        try {
+            $optimizationPrompt = <<<PROMPT
+You are an expert AI prompt engineer. Transform the following raw personality description into a professional System Instruction for an AI companion.
+
+RAW DESCRIPTION:
+{$this->about_description}
+
+TASK:
+1. Expand this into a detailed, structured system prompt
+2. Include personality traits, communication style, behavioral guidelines
+3. Make it clear, actionable, and comprehensive
+4. Keep the core personality intact while adding professional structure
+5. Format it as a direct instruction to the AI (use "You are..." format)
+
+Output ONLY the optimized system prompt, no explanations or meta-commentary.
+PROMPT;
+
+            $response = \App\Facades\GeminiBrain::callGemini($optimizationPrompt);
+            $this->system_prompt = trim($response);
+            
+            session()->flash('success', 'System prompt optimized successfully!');
+        } catch (\Exception $e) {
+            Log::error('PersonaManager: Failed to optimize system prompt', [
+                'error' => $e->getMessage(),
+            ]);
+            session()->flash('error', 'Failed to optimize prompt. Please try again.');
+        }
+    }
+
+    public function optimizePhysicalTraits()
+    {
+        if (empty($this->appearance_description)) {
+            session()->flash('error', 'Please enter an appearance concept first.');
+            return;
+        }
+
+        try {
+            $optimizationPrompt = <<<PROMPT
+You are an expert at writing photorealistic image generation prompts. Transform the following raw appearance description into a professional prompt for AI image generation.
+
+RAW DESCRIPTION:
+{$this->appearance_description}
+
+TASK:
+1. Expand this into a detailed physical description suitable for image generation
+2. Include: facial features, hair style/color, eye color, body type, skin tone, typical style/fashion
+3. Use clear, descriptive language that works well with image AI models
+4. Keep it concise but comprehensive (2-4 sentences)
+5. Focus on consistent, defining physical characteristics
+
+Output ONLY the optimized physical traits description, no explanations or meta-commentary.
+PROMPT;
+
+            $response = \App\Facades\GeminiBrain::callGemini($optimizationPrompt);
+            $this->physical_traits = trim($response);
+            
+            session()->flash('success', 'Physical traits optimized successfully!');
+        } catch (\Exception $e) {
+            Log::error('PersonaManager: Failed to optimize physical traits', [
+                'error' => $e->getMessage(),
+            ]);
+            session()->flash('error', 'Failed to optimize traits. Please try again.');
         }
     }
 
