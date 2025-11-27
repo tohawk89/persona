@@ -299,39 +299,67 @@ PROMPT;
      */
     public function extractMemoryTags(
         Collection $chatHistory,
-        string $systemPrompt
+        Persona $persona
     ): array {
         try {
             $conversationHistory = $this->buildConversationHistory($chatHistory);
 
+            // Fetch existing memory tags
+            $existingTags = $persona->memoryTags()->get(['id', 'category', 'target', 'value'])->map(function ($tag) {
+                return [
+                    'id' => $tag->id,
+                    'target' => $tag->target,
+                    'category' => $tag->category,
+                    'value' => $tag->value,
+                ];
+            })->toArray();
+
+            $existingTagsJson = json_encode($existingTags, JSON_PRETTY_PRINT);
+
             $prompt = <<<PROMPT
-{$systemPrompt}
+{$persona->system_prompt}
 
 CONVERSATION HISTORY:
 {$conversationHistory}
 
-TASK: Analyze this conversation and extract key facts about:
-1. The user (their preferences, interests, habits, etc.)
-2. Yourself as the persona (things you've learned or realized about yourself)
+CURRENT MEMORY STATE:
+{$existingTagsJson}
+
+TASK: Analyze the conversation and compare new facts with the Current Memory State.
+Return a JSON object with 3 keys:
+
+1. **add**: New facts to learn (not in current memory)
+2. **update**: Existing tags (by ID) that have changed or need refinement
+3. **remove**: Existing tag IDs that are no longer true, relevant, or were temporary
+
+RULES:
+- Only add truly NEW facts not already captured
+- Update tags when values change (e.g., 'waiting for checkup' → 'checkup completed')
+- Remove temporary feelings, outdated statuses, or stale context
+- Keep permanent traits (personality, preferences) unless explicitly contradicted
 
 OUTPUT FORMAT (JSON only, no markdown):
-[
-  {
-    "target": "user",
-    "category": "favorite_drink",
-    "value": "coffee with oat milk",
-    "context": "Mentioned during morning chat"
-  },
-  {
-    "target": "self",
-    "category": "communication_style",
-    "value": "friendly and empathetic",
-    "context": "Observed from conversation tone"
-  }
-]
+{
+  "add": [
+    {
+      "target": "user",
+      "category": "favorite_drink",
+      "value": "coffee with oat milk",
+      "context": "Mentioned during morning chat"
+    }
+  ],
+  "update": [
+    {
+      "id": 12,
+      "value": "checkup completed",
+      "context": "Updated after user confirmed"
+    }
+  ],
+  "remove": [14, 15]
+}
 
-Extract only NEW, MEANINGFUL facts. If there are no new facts, return an empty array [].
-Generate the JSON array now:
+If there are no changes, return: {"add": [], "update": [], "remove": []}
+Generate the JSON object now:
 PROMPT;
 
             $apiKey = config('services.gemini.api_key');
@@ -346,20 +374,22 @@ PROMPT;
                 ->generateContent($prompt);
 
             $jsonResponse = $result->text();
-            $memoryTags = json_decode($jsonResponse, true);
+            $changes = json_decode($jsonResponse, true);
 
-            if (!is_array($memoryTags)) {
-                Log::warning('GeminiBrainService: Invalid JSON response from Gemini for memory extraction');
-                return [];
+            if (!is_array($changes) || !isset($changes['add']) || !isset($changes['update']) || !isset($changes['remove'])) {
+                Log::warning('GeminiBrainService: Invalid JSON response from Gemini for memory extraction', [
+                    'response' => $jsonResponse,
+                ]);
+                return ['add' => [], 'update' => [], 'remove' => []];
             }
 
-            return $memoryTags;
+            return $changes;
         } catch (\Exception $e) {
             Log::error('GeminiBrainService: Memory extraction failed', [
                 'error' => $e->getMessage(),
             ]);
 
-            return [];
+            return ['add' => [], 'update' => [], 'remove' => []];
         }
     }
 

@@ -52,50 +52,74 @@ class ExtractMemoryTags implements ShouldQueue
                 return;
             }
 
-            // Extract memory tags from conversation
-            $extractedTags = GeminiBrain::extractMemoryTags(
+            // Extract memory tags with intelligent add/update/remove operations
+            $changes = GeminiBrain::extractMemoryTags(
                 $recentMessages,
-                $persona->system_prompt
+                $persona
             );
 
-            // Save new memory tags
-            $savedCount = 0;
-            foreach ($extractedTags as $tagData) {
+            $addCount = 0;
+            $updateCount = 0;
+            $removeCount = 0;
+
+            // Process ADD operations
+            foreach ($changes['add'] ?? [] as $tagData) {
                 // Validate required fields
                 if (!isset($tagData['target']) || !isset($tagData['category']) || !isset($tagData['value'])) {
                     Log::warning('ExtractMemoryTags: Skipping incomplete tag', ['tag' => $tagData]);
                     continue;
                 }
 
-                // Check if similar tag already exists (update instead of duplicate)
-                $existing = MemoryTag::where('persona_id', $persona->id)
-                    ->where('category', $tagData['category'])
-                    ->where('target', $tagData['target'])
-                    ->first();
+                // Create new tag
+                MemoryTag::create([
+                    'persona_id' => $persona->id,
+                    'target' => $tagData['target'],
+                    'category' => $tagData['category'],
+                    'value' => $tagData['value'],
+                    'context' => $tagData['context'] ?? "Extracted on " . now()->format('Y-m-d H:i'),
+                ]);
+                $addCount++;
+            }
 
-                if ($existing) {
-                    // Update existing tag
-                    $existing->update([
-                        'value' => $tagData['value'],
-                        'context' => $tagData['context'] ?? "Updated on " . now()->format('Y-m-d H:i'),
+            // Process UPDATE operations
+            foreach ($changes['update'] ?? [] as $updateData) {
+                if (!isset($updateData['id']) || !isset($updateData['value'])) {
+                    Log::warning('ExtractMemoryTags: Skipping incomplete update', ['update' => $updateData]);
+                    continue;
+                }
+
+                $tag = MemoryTag::find($updateData['id']);
+                if ($tag && $tag->persona_id === $persona->id) {
+                    $tag->update([
+                        'value' => $updateData['value'],
+                        'context' => $updateData['context'] ?? "Updated on " . now()->format('Y-m-d H:i'),
                     ]);
+                    $updateCount++;
                 } else {
-                    // Create new tag
-                    MemoryTag::create([
-                        'persona_id' => $persona->id,
-                        'target' => $tagData['target'],
-                        'category' => $tagData['category'],
-                        'value' => $tagData['value'],
-                        'context' => $tagData['context'] ?? "Extracted on " . now()->format('Y-m-d H:i'),
-                    ]);
-                    $savedCount++;
+                    Log::warning('ExtractMemoryTags: Tag not found or unauthorized', ['id' => $updateData['id']]);
+                }
+            }
+
+            // Process REMOVE operations
+            $removeIds = $changes['remove'] ?? [];
+            if (!empty($removeIds)) {
+                // Verify all tags belong to this persona before deletion
+                $tagsToRemove = MemoryTag::whereIn('id', $removeIds)
+                    ->where('persona_id', $persona->id)
+                    ->pluck('id')
+                    ->toArray();
+
+                if (!empty($tagsToRemove)) {
+                    MemoryTag::destroy($tagsToRemove);
+                    $removeCount = count($tagsToRemove);
                 }
             }
 
             Log::info('ExtractMemoryTags: Memory extraction completed', [
                 'user_id' => $this->user->id,
-                'extracted_count' => count($extractedTags),
-                'new_tags_saved' => $savedCount,
+                'added' => $addCount,
+                'updated' => $updateCount,
+                'removed' => $removeCount,
             ]);
 
         } catch (\Exception $e) {
