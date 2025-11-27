@@ -97,18 +97,31 @@ class TelegramService
         try {
             // Convert URL to local file path for Telegram upload
             if (filter_var($photo, FILTER_VALIDATE_URL)) {
-                // Extract the path from URL (e.g., /storage/generated_images/file.jpg)
+                // Extract the path from URL
+                // MediaLibrary format: /storage/{media_id}/filename.jpg
+                // Old format: /storage/generated_images/filename.jpg
                 $path = parse_url($photo, PHP_URL_PATH);
-                // Remove /storage prefix and map to storage/app/public
+                
+                // Remove /storage prefix
                 $relativePath = str_replace('/storage/', '', $path);
+                
+                // Try MediaLibrary path first (storage/app/public/{media_id}/filename.jpg)
                 $localPath = storage_path('app/public/' . $relativePath);
+                
+                // If not found, try legacy public_path for old format
+                if (!file_exists($localPath)) {
+                    $localPath = public_path('storage/' . $relativePath);
+                }
 
                 if (file_exists($localPath)) {
                     $photo = \Telegram\Bot\FileUpload\InputFile::create($localPath);
                 } else {
                     Log::error('TelegramService: Photo file not found', [
                         'url' => $photo,
-                        'local_path' => $localPath,
+                        'tried_paths' => [
+                            storage_path('app/public/' . $relativePath),
+                            public_path('storage/' . $relativePath),
+                        ],
                     ]);
                     return false;
                 }
@@ -159,18 +172,31 @@ class TelegramService
         try {
             // Convert URL to local file path for Telegram upload (same logic as sendPhoto)
             if (filter_var($voice, FILTER_VALIDATE_URL)) {
-                // Extract the path from URL (e.g., /storage/voice_notes/file.mp3)
+                // Extract the path from URL
+                // MediaLibrary format: /storage/{media_id}/filename.mp3
+                // Old format: /storage/voice_notes/filename.mp3
                 $path = parse_url($voice, PHP_URL_PATH);
-                // Remove /storage prefix and map to storage/app/public
+                
+                // Remove /storage prefix
                 $relativePath = str_replace('/storage/', '', $path);
+                
+                // Try MediaLibrary path first (storage/app/public/{media_id}/filename.mp3)
                 $localPath = storage_path('app/public/' . $relativePath);
+                
+                // If not found, try legacy public_path for old format
+                if (!file_exists($localPath)) {
+                    $localPath = public_path('storage/' . $relativePath);
+                }
 
                 if (file_exists($localPath)) {
                     $voice = \Telegram\Bot\FileUpload\InputFile::create($localPath);
                 } else {
                     Log::error('TelegramService: Voice file not found', [
                         'url' => $voice,
-                        'local_path' => $localPath,
+                        'tried_paths' => [
+                            storage_path('app/public/' . $relativePath),
+                            public_path('storage/' . $relativePath),
+                        ],
                     ]);
                     return false;
                 }
