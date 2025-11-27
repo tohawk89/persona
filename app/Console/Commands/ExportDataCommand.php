@@ -15,13 +15,13 @@ class ExportDataCommand extends Command
     public function handle(): int
     {
         $days = (int) $this->option('days');
-        
+
         $this->info("📊 Exporting data from the last {$days} days...");
         $this->newLine();
 
         // Get the active persona
         $persona = Persona::where('is_active', true)->first();
-        
+
         if (!$persona) {
             $this->error('❌ No active persona found');
             return Command::FAILURE;
@@ -33,9 +33,9 @@ class ExportDataCommand extends Command
         // Save to file
         $filename = 'system_export_' . now()->format('Y-m-d_His') . '.md';
         $path = "exports/{$filename}";
-        
+
         Storage::disk('public')->put($path, $content);
-        
+
         $fullPath = storage_path("app/public/{$path}");
         $publicUrl = asset("storage/{$path}");
 
@@ -45,14 +45,14 @@ class ExportDataCommand extends Command
         $this->line("📁 File saved to: <fg=cyan>{$fullPath}</>");
         $this->line("🌐 Public URL: <fg=cyan>{$publicUrl}</>");
         $this->newLine();
-        
+
         // Display statistics
         $messageCount = Message::where('persona_id', $persona->id)
             ->where('created_at', '>=', now()->subDays($days))
             ->count();
-        
+
         $memoryCount = MemoryTag::where('persona_id', $persona->id)->count();
-        
+
         $this->table(
             ['Metric', 'Count'],
             [
@@ -69,9 +69,9 @@ class ExportDataCommand extends Command
     {
         $exportDate = now()->format('Y-m-d H:i:s');
         $cutoffDate = now()->subDays($days);
-        
+
         $content = [];
-        
+
         // Header
         $content[] = "# System Export (Last {$days} Days)";
         $content[] = "";
@@ -86,7 +86,7 @@ class ExportDataCommand extends Command
         $content[] = "## Memory Brain (Current State)";
         $content[] = "";
         $content[] = $this->buildMemorySection($persona);
-        
+
         // Section 2: Chat Logs
         $content[] = "## Chat Logs";
         $content[] = "";
@@ -107,7 +107,7 @@ class ExportDataCommand extends Command
         }
 
         $content = [];
-        
+
         // Group by target
         $userTags = $memoryTags->where('target', 'user');
         $selfTags = $memoryTags->where('target', 'self');
@@ -116,7 +116,7 @@ class ExportDataCommand extends Command
         if ($userTags->isNotEmpty()) {
             $content[] = "### 👤 User Facts";
             $content[] = "";
-            
+
             foreach ($userTags->groupBy('category') as $category => $tags) {
                 $content[] = "**{$category}:**";
                 foreach ($tags as $tag) {
@@ -131,7 +131,7 @@ class ExportDataCommand extends Command
         if ($selfTags->isNotEmpty()) {
             $content[] = "### 🤖 Persona Facts";
             $content[] = "";
-            
+
             foreach ($selfTags->groupBy('category') as $category => $tags) {
                 $content[] = "**{$category}:**";
                 foreach ($tags as $tag) {
@@ -167,7 +167,7 @@ class ExportDataCommand extends Command
 
         foreach ($messages as $message) {
             $messageDate = $message->created_at->format('Y-m-d');
-            
+
             // Add date separator
             if ($messageDate !== $currentDate) {
                 if ($currentDate !== null) {
@@ -182,15 +182,15 @@ class ExportDataCommand extends Command
             $timestamp = $message->created_at->format('H:i');
             $sender = $message->sender_type === 'user' ? 'USER' : 'BOT';
             $messageContent = $message->content ?? '[No text content]';
-            
+
             // Handle multi-line content
             $lines = explode("\n", $messageContent);
             $firstLine = array_shift($lines);
-            
+
             $imagePath = $message->image_path ? " (Image: {$message->image_path})" : "";
-            
+
             $content[] = "[{$timestamp}] [{$sender}]: {$firstLine}{$imagePath}";
-            
+
             // Add continuation lines with proper indentation
             foreach ($lines as $line) {
                 $content[] = "              {$line}";

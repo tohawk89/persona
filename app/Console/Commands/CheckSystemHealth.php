@@ -31,7 +31,7 @@ class CheckSystemHealth extends Command
 
         // Return exit code based on results
         $failedCount = count(array_filter($this->results, fn($result) => !$result['status']));
-        
+
         if ($failedCount > 0) {
             $this->newLine();
             $this->error("❌ {$failedCount} service(s) failed health check");
@@ -50,7 +50,7 @@ class CheckSystemHealth extends Command
         try {
             DB::connection()->getPdo();
             $tables = DB::select('SHOW TABLES');
-            
+
             $this->results['database'] = [
                 'status' => true,
                 'message' => 'Connected (' . count($tables) . ' tables)',
@@ -130,13 +130,13 @@ class CheckSystemHealth extends Command
             if ($response->successful()) {
                 $voices = $response->json()['voices'] ?? [];
                 $voiceCount = count($voices);
-                
+
                 // Check if configured voice exists
                 $configuredVoice = collect($voices)->firstWhere('voice_id', $voiceId);
-                $voiceStatus = $configuredVoice 
-                    ? "Voice '{$configuredVoice['name']}' found" 
+                $voiceStatus = $configuredVoice
+                    ? "Voice '{$configuredVoice['name']}' found"
                     : ($voiceId ? 'Configured voice ID not found' : 'No voice configured');
-                
+
                 $this->results['elevenlabs'] = [
                     'status' => true,
                     'message' => "{$voiceCount} voices available. {$voiceStatus}",
@@ -219,7 +219,7 @@ class CheckSystemHealth extends Command
             if ($response) {
                 $username = $response['username'] ?? 'Unknown';
                 $firstName = $response['first_name'] ?? 'Unknown';
-                
+
                 $this->results['telegram'] = [
                     'status' => true,
                     'message' => "Bot connected: @{$username} ({$firstName})",
@@ -252,7 +252,7 @@ class CheckSystemHealth extends Command
         foreach ($this->results as $service => $result) {
             $statusIcon = $result['status'] ? '<fg=green>✅ PASS</>' : '<fg=red>❌ FAIL</>';
             $serviceName = ucfirst($service);
-            
+
             $rows[] = [
                 $serviceName,
                 $statusIcon,
