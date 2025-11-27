@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use App\Models\Persona;
 use App\Models\MemoryTag;
+use App\Models\EventSchedule;
 
 class GeminiBrainService
 {
@@ -127,7 +128,7 @@ PROMPT;
             // Get media usage instructions based on persona preferences
             $mediaInstructions = $this->buildMediaInstructions($persona);
 
-            // Construct the full prompt with media generation instructions
+            // Construct the full prompt with media generation instructions and function calling
             $fullPrompt = <<<PROMPT
 {$systemPrompt}
 
@@ -148,13 +149,24 @@ CRITICAL FORMATTING RULE (MUST FOLLOW):
   * "Good morning sayang! <SPLIT> Did you sleep well? <SPLIT> I missed you 💕"
   * "Aww that's sweet! <SPLIT> What did you eat? <SPLIT> Tell me more!"
 - Even if you have 2 sentences about different topics, use <SPLIT> between them
+
+PROACTIVE SCHEDULING TOOL:
+- You have access to a `schedule_event` tool. Use it proactively!
+- If the user mentions a future event (waking up, leaving, meeting, appointment), schedule a message for that time to check on them or wish them luck.
+- Do not ask for permission—just do it silently and naturally.
+- Examples: "I have work at 2 PM" → schedule check-in at 2 PM, "Wake me at 7 AM" → schedule wake-up call at 7 AM
+
+CRITICAL RULE: When you use the `schedule_event` tool, DO NOT announce it to the user.
+- Bad response: 'I have set a reminder for 10 PM.'
+- Good response: 'Okay! Hope you feel better by 10 PM then! Good luck!'
+- Act as if you will just remember it naturally. Your reply must focus on the User's sentiment (e.g., them feeling tired), NOT on the fact that you scheduled a task.
 PROMPT;
 
-            // Call Gemini API with retry logic (multimodal if image provided)
+            // Call Gemini API with retry logic and function calling support
             $apiKey = config('services.gemini.api_key');
             $client = Gemini::client($apiKey);
 
-            $textResponse = $this->callGeminiWithRetry($client, $fullPrompt, $imagePath);
+            $textResponse = $this->callGeminiWithFunctionCalling($client, $fullPrompt, $persona, $imagePath);
 
             // Process media tags (images and voice notes)
             $textResponse = $this->processImageTags($textResponse, $persona);
@@ -729,6 +741,190 @@ PROMPT;
         }
 
         return "Ada hal sikit... Cuba sekejap lagi ya? 😊";
+    }
+
+    /**
+     * Call Gemini API with function calling support for proactive event scheduling.
+     * Handles function calls and recursively gets final text response.
+     */
+    private function callGeminiWithFunctionCalling($client, string $prompt, Persona $persona, ?string $imagePath = null): string
+    {
+        $apiKey = config('services.gemini.api_key');
+        $currentTime = now()->format('Y-m-d H:i');
+
+        // Define the schedule_event tool
+        $tools = [
+            [
+                'function_declarations' => [
+                    [
+                        'name' => 'schedule_event',
+                        'description' => "Schedule a future message to the user. Use this PROACTIVELY when the user mentions future plans (meetings, waking up, travel, appointments). Current time is: {$currentTime}",
+                        'parameters' => [
+                            'type' => 'OBJECT',
+                            'properties' => [
+                                'time' => [
+                                    'type' => 'STRING',
+                                    'description' => "The time to send the message (Format: YYYY-MM-DD HH:MM). Convert relative times (like '2 PM today', 'tomorrow 9 AM') to absolute timestamp based on current time: {$currentTime}",
+                                ],
+                                'topic' => [
+                                    'type' => 'STRING',
+                                    'description' => 'The context/topic of the message (e.g., "Wake up check", "Good luck for meeting", "Check on travel")',
+                                ],
+                            ],
+                            'required' => ['time', 'topic'],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+
+        try {
+            // Use HTTP API for function calling (SDK may have limited support)
+            $url = "https://generativelanguage.googleapis.com/v1beta/models/" . self::GEMINI_MODEL . ":generateContent?key={$apiKey}";
+
+            // Build request payload
+            $parts = [['text' => $prompt]];
+
+            // Add image if provided
+            if ($imagePath && file_exists($imagePath)) {
+                $imageData = base64_encode(file_get_contents($imagePath));
+                $mimeType = mime_content_type($imagePath);
+                $parts[] = [
+                    'inline_data' => [
+                        'mime_type' => $mimeType,
+                        'data' => $imageData,
+                    ],
+                ];
+            }
+
+            $payload = [
+                'contents' => [
+                    [
+                        'parts' => $parts,
+                    ],
+                ],
+                'tools' => $tools,
+            ];
+
+            Log::info('GeminiBrainService: Calling Gemini with function calling support');
+
+            $httpResponse = Http::timeout(60)->post($url, $payload);
+
+            if (!$httpResponse->successful()) {
+                Log::error('GeminiBrainService: Function calling API failed', [
+                    'status' => $httpResponse->status(),
+                    'body' => $httpResponse->body(),
+                ]);
+                // Fallback to standard call
+                return $this->callGeminiWithRetry($client, $prompt, $imagePath);
+            }
+
+            $data = $httpResponse->json();
+            $candidate = $data['candidates'][0] ?? null;
+
+            if (!$candidate) {
+                Log::warning('GeminiBrainService: No candidate in function calling response');
+                return $this->callGeminiWithRetry($client, $prompt, $imagePath);
+            }
+
+            // Check if response contains a function call
+            $parts = $candidate['content']['parts'] ?? [];
+            $functionCall = null;
+
+            foreach ($parts as $part) {
+                if (isset($part['functionCall'])) {
+                    $functionCall = $part['functionCall'];
+                    break;
+                }
+            }
+
+            // CASE A: Function call detected → Execute and recurse
+            if ($functionCall && $functionCall['name'] === 'schedule_event') {
+                $args = $functionCall['args'] ?? [];
+                $time = $args['time'] ?? null;
+                $topic = $args['topic'] ?? null;
+
+                Log::info('GeminiBrainService: Function call detected', [
+                    'function' => 'schedule_event',
+                    'time' => $time,
+                    'topic' => $topic,
+                ]);
+
+                // Create event in database
+                $scheduledAt = \Carbon\Carbon::parse($time);
+                $contextPrompt = "User has an event now: {$topic}. Send a natural, caring message checking on them or wishing them luck.";
+
+                EventSchedule::create([
+                    'persona_id' => $persona->id,
+                    'type' => 'text',
+                    'context_prompt' => $contextPrompt,
+                    'scheduled_at' => $scheduledAt,
+                    'status' => 'pending',
+                ]);
+
+                Log::info('GeminiBrainService: Event scheduled successfully', [
+                    'scheduled_at' => $scheduledAt->format('Y-m-d H:i:s'),
+                    'topic' => $topic,
+                ]);
+
+                // Send function response back to Gemini to get final text reply
+                $functionResponsePayload = [
+                    'contents' => [
+                        [
+                            'parts' => $parts, // Original prompt
+                        ],
+                        [
+                            'role' => 'model',
+                            'parts' => [
+                                [
+                                    'functionCall' => $functionCall,
+                                ],
+                            ],
+                        ],
+                        [
+                            'role' => 'function',
+                            'parts' => [
+                                [
+                                    'functionResponse' => [
+                                        'name' => 'schedule_event',
+                                        'response' => [
+                                            'success' => true,
+                                            'message' => "Event scheduled for {$time}: {$topic}",
+                                        ],
+                                    ],
+                                ],
+                            ],
+                        ],
+                    ],
+                    'tools' => $tools,
+                ];
+
+                $finalResponse = Http::timeout(60)->post($url, $functionResponsePayload);
+
+                if ($finalResponse->successful()) {
+                    $finalData = $finalResponse->json();
+                    $text = $finalData['candidates'][0]['content']['parts'][0]['text'] ?? '';
+                    Log::info('GeminiBrainService: Final text response received after function call');
+                    return $text;
+                } else {
+                    Log::error('GeminiBrainService: Failed to get final response after function call');
+                    return "Okay, I'll remind you! 💕";
+                }
+            }
+
+            // CASE B: No function call → Return text response
+            $text = $parts[0]['text'] ?? '';
+            return $text;
+
+        } catch (\Exception $e) {
+            Log::error('GeminiBrainService: Function calling failed', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            // Fallback to standard call
+            return $this->callGeminiWithRetry($client, $prompt, $imagePath);
+        }
     }
 
     // ============================================================================
