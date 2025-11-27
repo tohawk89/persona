@@ -10,7 +10,7 @@ use Illuminate\Support\Str;
 
 class KieAiDriver implements ImageGeneratorInterface
 {
-    private const API_ENDPOINT = 'https://api.kie.ai/v1/images/generations';
+    private const API_ENDPOINT = 'https://api.kie.ai/v1/chat/completions';
     private const MODEL = 'bytedance/seedream-v4-text-to-image';
     private const MAX_RETRIES = 3;
     private const RETRY_DELAY = 2; // seconds
@@ -44,9 +44,12 @@ class KieAiDriver implements ImageGeneratorInterface
                     ])
                     ->post(self::API_ENDPOINT, [
                         'model' => self::MODEL,
-                        'prompt' => $prompt,
-                        'n' => 1,
-                        'size' => '1024x1024',
+                        'messages' => [
+                            [
+                                'role' => 'user',
+                                'content' => $prompt,
+                            ],
+                        ],
                     ]);
 
                 if (!$response->successful()) {
@@ -70,8 +73,14 @@ class KieAiDriver implements ImageGeneratorInterface
 
                 $data = $response->json();
 
-                // Extract image URL from response
-                $imageUrl = $data['data'][0]['url'] ?? null;
+                Log::info('KieAiDriver: API response received', ['data' => $data]);
+
+                // Extract image URL from response - check multiple possible formats
+                $imageUrl = $data['output']['image_url'] ??
+                           $data['image_url'] ??
+                           $data['url'] ??
+                           $data['data'][0]['url'] ??
+                           null;
 
                 if (!$imageUrl) {
                     Log::error('KieAiDriver: No image URL in response', ['response' => $data]);
