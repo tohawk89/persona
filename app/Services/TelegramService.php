@@ -282,6 +282,31 @@ class TelegramService
     }
 
     /**
+     * Get bot information.
+     *
+     * @return array|null Bot info (id, username, first_name, etc.)
+     */
+    public function getMe(): ?array
+    {
+        try {
+            $response = Telegram::getMe();
+
+            return [
+                'id' => $response->getId(),
+                'is_bot' => $response->getIsBot(),
+                'first_name' => $response->getFirstName(),
+                'username' => $response->getUsername(),
+            ];
+        } catch (TelegramSDKException $e) {
+            Log::error('TelegramService: Failed to get bot info', [
+                'error' => $e->getMessage(),
+            ]);
+
+            return null;
+        }
+    }
+
+    /**
      * Get webhook info.
      *
      * @return array|null

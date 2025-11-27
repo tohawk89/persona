@@ -48,6 +48,7 @@ Send to Telegram → Save to messages table
 composer run setup  # Installs deps, generates key, migrates, builds frontend
 php artisan app:create-admin  # Create admin user for dashboard
 php artisan storage:link  # Link public storage for avatars
+php artisan app:check  # Verify all external services (Database, Cloudflare, ElevenLabs, Gemini, Telegram)
 ```
 
 ### Development Server
