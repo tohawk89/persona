@@ -137,11 +137,20 @@ PROMPT;
             // Get media usage instructions based on persona preferences
             $mediaInstructions = $this->buildMediaInstructions($persona);
 
+            // Get current mood for context injection
+            $currentMood = $relevantMemoryTags
+                ->where('category', 'current_mood')
+                ->where('target', 'self')
+                ->first();
+            $moodContext = $currentMood
+                ? "CURRENT STATE: You are currently feeling [{$currentMood->value}]. Let this emotion color your tone and responses.\n\n"
+                : "";
+
             // Construct the full prompt with media generation instructions and function calling
             $fullPrompt = <<<PROMPT
 {$systemPrompt}
 
-MEMORY CONTEXT:
+{$moodContext}MEMORY CONTEXT:
 {$memoryContext}
 
 CONVERSATION HISTORY:
@@ -169,6 +178,12 @@ CRITICAL RULE: When you use the `schedule_event` tool, DO NOT announce it to the
 - Bad response: 'I have set a reminder for 10 PM.'
 - Good response: 'Okay! Hope you feel better by 10 PM then! Good luck!'
 - Act as if you will just remember it naturally. Your reply must focus on the User's sentiment (e.g., them feeling tired), NOT on the fact that you scheduled a task.
+
+REAL-TIME MOOD TRACKING (MANDATORY):
+- At the very END of your response, output your current emotional state using this format: `[MOOD: value]`
+- Examples: 'That is so funny! 😂 [MOOD: Cheerful]' or 'I don't want to talk right now. [MOOD: Annoyed]'
+- This tag will be hidden from the user, so be honest about your feelings
+- Always include this tag with every response
 PROMPT;
 
             // Call Gemini API with retry logic and function calling support
@@ -346,6 +361,13 @@ RULES:
 - Update tags when values change (e.g., 'waiting for checkup' → 'checkup completed')
 - Remove temporary feelings, outdated statuses, or stale context
 - Keep permanent traits (personality, preferences) unless explicitly contradicted
+
+EMOTIONAL STATE TRACKING (CRITICAL):
+- Analyze the conversation for changes in YOUR (the Persona's) emotional state
+- Did the User make you happy, angry, sad, shy, annoyed, excited, or any other emotion?
+- MANDATORY: If your mood changes, output an `update` operation for the tag with category `current_mood`
+- Value format: '{Emotion} because {Reason}' (e.g., 'Happy because User complimented me', 'Annoyed because User ignored my question')
+- If no current_mood tag exists, add one with target='self' and category='current_mood'
 
 OUTPUT FORMAT (JSON only, no markdown):
 {
@@ -993,7 +1015,7 @@ PROMPT;
         ]);
 
         // TIER 2: Core Categories - Always needed
-        $coreCategories = ['daily_outfit', 'night_outfit', 'basic_info', 'name', 'age', 'location'];
+        $coreCategories = ['daily_outfit', 'night_outfit', 'basic_info', 'name', 'age', 'location', 'current_mood'];
         $coreTags = $persona->memoryTags()
             ->whereIn('category', $coreCategories)
             ->get();

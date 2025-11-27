@@ -126,6 +126,33 @@ class ProcessChatResponse implements ShouldQueue
                     $this->imagePath
                 );
 
+                // STEP 4.5: Extract and save real-time mood
+                if (preg_match('/\[MOOD:\s*(.+?)\]/', $response, $moodMatch)) {
+                    $moodValue = trim($moodMatch[1]);
+
+                    // Update or create current_mood memory tag
+                    \App\Models\MemoryTag::updateOrCreate(
+                        [
+                            'persona_id' => $persona->id,
+                            'category' => 'current_mood',
+                            'target' => 'self',
+                        ],
+                        [
+                            'value' => $moodValue,
+                            'context' => 'Real-time update on ' . now()->format('Y-m-d H:i:s'),
+                        ]
+                    );
+
+                    // Remove mood tag from response (hidden from user)
+                    $response = str_replace($moodMatch[0], '', $response);
+                    $response = trim($response);
+
+                    Log::info('ProcessChatResponse: Mood extracted and saved', [
+                        'user_id' => $this->user->id,
+                        'mood' => $moodValue,
+                    ]);
+                }
+
                 // STEP 5: Send response to Telegram
                 // NOTE: sendResponseToTelegram() handles saving to DB (CRITICAL for context)
                 $this->sendResponseToTelegram($response);
