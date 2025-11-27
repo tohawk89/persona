@@ -14,7 +14,9 @@ class Persona extends Model implements HasMedia
     protected $fillable = [
         'user_id',
         'name',
+        'about_description',
         'system_prompt',
+        'appearance_description',
         'physical_traits',
         'wake_time',
         'sleep_time',

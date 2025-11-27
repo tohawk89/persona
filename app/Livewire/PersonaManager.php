@@ -166,7 +166,7 @@ PROMPT;
 
             $response = \App\Facades\GeminiBrain::callGemini($optimizationPrompt);
             $this->system_prompt = trim($response);
-            
+
             session()->flash('success', 'System prompt optimized successfully!');
         } catch (\Exception $e) {
             Log::error('PersonaManager: Failed to optimize system prompt', [
@@ -202,7 +202,7 @@ PROMPT;
 
             $response = \App\Facades\GeminiBrain::callGemini($optimizationPrompt);
             $this->physical_traits = trim($response);
-            
+
             session()->flash('success', 'Physical traits optimized successfully!');
         } catch (\Exception $e) {
             Log::error('PersonaManager: Failed to optimize physical traits', [

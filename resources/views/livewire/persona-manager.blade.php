@@ -33,7 +33,7 @@
                     <!-- Personality Section (2-Stage) -->
                     <div class="border border-gray-300 dark:border-gray-600 rounded-lg p-6 space-y-4">
                         <h3 class="text-lg font-semibold mb-4">🧠 Personality Configuration</h3>
-                        
+
                         <!-- Stage 1: Raw Concept -->
                         <div>
                             <label for="about_description" class="block text-sm font-medium mb-2">
@@ -88,7 +88,7 @@
                     <!-- Appearance Section (2-Stage) -->
                     <div class="border border-gray-300 dark:border-gray-600 rounded-lg p-6 space-y-4">
                         <h3 class="text-lg font-semibold mb-4">👤 Appearance Configuration</h3>
-                        
+
                         <!-- Stage 1: Raw Concept -->
                         <div>
                             <label for="appearance_description" class="block text-sm font-medium mb-2">

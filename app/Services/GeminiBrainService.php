@@ -113,8 +113,8 @@ PROMPT;
         try {
             $apiKey = config('services.gemini.api_key');
             $client = Gemini::client($apiKey);
-            
-            $result = $client->geminiPro()->generateContent($prompt);
+
+            $result = $client->generativeModel(self::GEMINI_MODEL)->generateContent($prompt);
             return $result->text();
         } catch (\Exception $e) {
             Log::error('GeminiBrainService: Simple Gemini call failed', [
