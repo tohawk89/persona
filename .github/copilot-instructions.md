@@ -68,10 +68,17 @@ Telegram::sendMessage($chatId, 'Test message');
 
 ### Media Tag Processing
 AI responses can contain tags that trigger media generation:
-- `[GENERATE_IMAGE: description]` → Cloudflare Flux-1-Schnell → `[IMAGE: url]`
-- `[SEND_VOICE: text]` → ElevenLabs TTS → `[AUDIO: url]`
+- `[GENERATE_IMAGE: description]` → Cloudflare Flux-1-Schnell → MediaLibrary → `[IMAGE: url]`
+- `[SEND_VOICE: text]` → ElevenLabs TTS → MediaLibrary → `[AUDIO: url]`
 
 Process in services, not views. See `processImageTags()` and `processVoiceTags()` in `GeminiBrainService`.
+
+**Storage Strategy**: All generated media (images, voice notes) are stored using Spatie MediaLibrary and attached to the Persona model. Collections used:
+- `reference_images` - User-uploaded persona photos
+- `generated_images` - AI-generated images
+- `voice_notes` - ElevenLabs voice messages
+
+Fallback to direct Storage is available if Persona context is unavailable.
 
 ### Image Generation Consistency
 Always pass `physical_traits` + dynamic outfit from memory tags:

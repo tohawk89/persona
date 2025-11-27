@@ -13,10 +13,11 @@ class AudioService
      * Generate voice audio from text using ElevenLabs API.
      *
      * @param string $text The text to convert to speech
+     * @param \App\Models\Persona|null $persona Optional persona for MediaLibrary storage
      * @param string|null $voiceId Optional voice ID, defaults to config value
      * @return string|null The URL of the generated audio file, or null on failure
      */
-    public function generateVoice(string $text, ?string $voiceId = null): ?string
+    public function generateVoice(string $text, ?\App\Models\Persona $persona = null, ?string $voiceId = null): ?string
     {
         try {
             $apiKey = config('services.elevenlabs.api_key');
@@ -64,16 +65,50 @@ class AudioService
                 return null;
             }
 
-            // Generate unique filename and save to public storage
+            // Generate unique filename
             $filename = Str::uuid() . '.mp3';
+
+            // If persona is available, use MediaLibrary
+            if ($persona) {
+                try {
+                    // Save temporarily
+                    $tempPath = sys_get_temp_dir() . '/' . $filename;
+                    file_put_contents($tempPath, $audioData);
+
+                    // Add to MediaLibrary
+                    $media = $persona->addMedia($tempPath)
+                        ->usingFileName($filename)
+                        ->toMediaCollection('voice_notes');
+
+                    $url = $media->getUrl();
+
+                    // Clean up temp file
+                    @unlink($tempPath);
+
+                    Log::info('AudioService: Voice generated successfully via MediaLibrary', [
+                        'filename' => $filename,
+                        'url' => $url,
+                        'size' => strlen($audioData),
+                        'media_id' => $media->id,
+                    ]);
+
+                    return $url;
+                } catch (\Exception $e) {
+                    // Clean up temp file on error
+                    @unlink($tempPath);
+                    Log::error('AudioService: MediaLibrary save failed', [
+                        'error' => $e->getMessage(),
+                    ]);
+                    // Fall through to Storage fallback
+                }
+            }
+
+            // Fallback to Storage if no persona or MediaLibrary failed
             $path = "voice_notes/{$filename}";
-
             Storage::disk('public')->put($path, $audioData);
+            $url = asset('storage/' . $path);
 
-            // Return full URL
-            $url = Storage::disk('public')->url($path);
-
-            Log::info('AudioService: Voice generated successfully', [
+            Log::info('AudioService: Voice generated successfully (fallback)', [
                 'filename' => $filename,
                 'url' => $url,
                 'size' => strlen($audioData),

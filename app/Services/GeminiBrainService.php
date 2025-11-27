@@ -88,7 +88,7 @@ PROMPT;
 
             // Process media tags (images and voice notes)
             $textResponse = $this->processImageTags($textResponse, $persona);
-            $textResponse = $this->processVoiceTags($textResponse);
+            $textResponse = $this->processVoiceTags($textResponse, $persona);
 
             return $textResponse;
         } catch (\Exception $e) {
@@ -237,7 +237,7 @@ PROMPT;
 
             // Process media tags (images and voice notes)
             $textResponse = $this->processImageTags($textResponse, $persona);
-            $textResponse = $this->processVoiceTags($textResponse);
+            $textResponse = $this->processVoiceTags($textResponse, $persona);
 
             return $textResponse;
         } catch (\Exception $e) {
@@ -493,6 +493,9 @@ PROMPT;
                 'enhanced_prompt' => $enhancedPrompt,
             ]);
 
+            // Store persona for later use
+            $this->currentPersona = $persona;
+
             // Call Cloudflare Workers AI API
             $response = $this->callCloudflareImageAPI($accountId, $apiToken, $enhancedPrompt);
 
@@ -521,8 +524,8 @@ PROMPT;
                 }
             }
 
-            // Process and save the generated image
-            return $this->saveGeneratedImage($response);
+            // Process and save the generated image with persona context
+            return $this->saveGeneratedImage($response, $persona);
 
         } catch (\Exception $e) {
             Log::error('GeminiBrainService: Image generation failed', [
@@ -571,9 +574,22 @@ PROMPT;
     }
 
     /**
+     * Store persona reference for image generation.
+     */
+    private ?Persona $currentPersona = null;
+
+    /**
+     * Set current persona for image generation context.
+     */
+    public function setCurrentPersona(Persona $persona): void
+    {
+        $this->currentPersona = $persona;
+    }
+
+    /**
      * Process voice note generation tags in the response.
      */
-    private function processVoiceTags(string $textResponse): string
+    private function processVoiceTags(string $textResponse, ?Persona $persona = null): string
     {
         if (!preg_match('/\[SEND_VOICE:\s*(.+?)\]/i', $textResponse, $matches)) {
             return $textResponse;
@@ -586,7 +602,7 @@ PROMPT;
         ]);
 
         $audioService = app(AudioService::class);
-        $audioUrl = $audioService->generateVoice($voiceText);
+        $audioUrl = $audioService->generateVoice($voiceText, $persona ?? $this->currentPersona);
 
         if ($audioUrl) {
             return preg_replace(
@@ -703,9 +719,9 @@ PROMPT;
     }
 
     /**
-     * Save generated image from Cloudflare response.
+     * Save generated image from Cloudflare response using MediaLibrary.
      */
-    private function saveGeneratedImage($response): ?string
+    private function saveGeneratedImage($response, ?Persona $persona = null): ?string
     {
         $data = $response->json();
 
@@ -725,15 +741,49 @@ PROMPT;
             return null;
         }
 
-        // Generate unique filename and save
+        // Generate unique filename and save temporarily
         $filename = Str::uuid() . '.jpg';
+        $tempPath = sys_get_temp_dir() . '/' . $filename;
+        file_put_contents($tempPath, $decodedImage);
+
+        // If persona is available, use MediaLibrary
+        if ($persona) {
+            try {
+                $media = $persona->addMedia($tempPath)
+                    ->usingFileName($filename)
+                    ->toMediaCollection('generated_images');
+
+                $url = $media->getUrl();
+
+                // Clean up temp file
+                @unlink($tempPath);
+
+                Log::info('GeminiBrainService: Image generated successfully via MediaLibrary', [
+                    'filename' => $filename,
+                    'url' => $url,
+                    'media_id' => $media->id,
+                ]);
+
+                return $url;
+            } catch (\Exception $e) {
+                // Clean up temp file on error
+                @unlink($tempPath);
+                Log::error('GeminiBrainService: MediaLibrary save failed', [
+                    'error' => $e->getMessage(),
+                ]);
+                return null;
+            }
+        }
+
+        // Fallback to Storage if no persona (shouldn't happen in normal flow)
         $path = "generated_images/{$filename}";
-
         Storage::disk('public')->put($path, $decodedImage);
+        $url = asset('storage/' . $path);
 
-        $url = Storage::disk('public')->url($path);
+        // Clean up temp file
+        @unlink($tempPath);
 
-        Log::info('GeminiBrainService: Image generated successfully', [
+        Log::info('GeminiBrainService: Image generated successfully (fallback)', [
             'filename' => $filename,
             'url' => $url,
         ]);
