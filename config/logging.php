@@ -18,7 +18,8 @@ return [
     |
     */
 
-    'default' => env('LOG_CHANNEL', 'stack'),
+    // Default log channel. Use 'daily' by default so logs rotate automatically.
+    'default' => env('LOG_CHANNEL', 'daily'),
 
     /*
     |--------------------------------------------------------------------------

@@ -72,6 +72,13 @@ CONVERSATION HISTORY:
 INSTRUCTIONS:
 - Respond naturally as the persona, taking into account the memory context and conversation history.
 {$mediaInstructions}
+
+CRITICAL FORMATTING RULE (MUST FOLLOW):
+- NEVER send walls of text or multiple paragraphs in one message
+- ALWAYS separate each distinct thought, question, or paragraph with <SPLIT>
+- Examples:
+  * "Good morning sayang! <SPLIT> Did you sleep well? <SPLIT> I missed you 💕"
+  * "Aww that's sweet! <SPLIT> What did you eat? <SPLIT> Tell me more!"
 Assistant:
 PROMPT;
 
@@ -133,6 +140,14 @@ CONVERSATION HISTORY:
 INSTRUCTIONS:
 - Respond naturally as the persona, taking into account the memory context and conversation history.
 {$mediaInstructions}
+
+CRITICAL FORMATTING RULE (MUST FOLLOW):
+- NEVER send walls of text or multiple paragraphs in one message
+- ALWAYS separate each distinct thought, question, or paragraph with <SPLIT>
+- Examples:
+  * "Good morning sayang! <SPLIT> Did you sleep well? <SPLIT> I missed you 💕"
+  * "Aww that's sweet! <SPLIT> What did you eat? <SPLIT> Tell me more!"
+- Even if you have 2 sentences about different topics, use <SPLIT> between them
 PROMPT;
 
             // Call Gemini API with retry logic (multimodal if image provided)

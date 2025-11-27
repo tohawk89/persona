@@ -168,7 +168,7 @@ class ProcessChatResponse implements ShouldQueue
     }
 
     /**
-     * Send the response to Telegram, handling media tags.
+     * Send the response to Telegram, handling media tags and message splitting.
      * CRITICAL: Bot messages are ALWAYS saved to DB for context continuity.
      */
     private function sendResponseToTelegram(string $response): void
@@ -223,29 +223,70 @@ class ProcessChatResponse implements ShouldQueue
             ]);
         }
 
-        // CASE C: Standard Text (only if no image, since image already sent text as caption)
+        // CASE C: Standard Text (with natural pacing via <SPLIT> delimiter)
         if (!$hasImage && !$hasAudio && $textPart) {
-            // Plain text message with streaming effect
-            Telegram::sendStreamingMessage($this->user->telegram_chat_id, $textPart);
+            // Split text by <SPLIT> delimiter for natural message pacing
+            $parts = explode('<SPLIT>', $textPart);
 
-            // CRITICAL: Save bot text response to DB
-            Message::create([
-                'user_id' => $this->user->id,
-                'persona_id' => $this->user->persona?->id,
-                'sender_type' => 'bot',
-                'content' => $textPart,
-            ]);
+            foreach ($parts as $index => $part) {
+                $part = trim($part);
+
+                // Skip empty parts
+                if (empty($part)) {
+                    continue;
+                }
+
+                // Send typing indicator before each message
+                Telegram::sendChatAction($this->user->telegram_chat_id, 'typing');
+
+                // Calculate human-like delay based on message length
+                // Formula: 0.05 seconds per character, capped between 1-4 seconds
+                $delay = min(max(strlen($part) * 0.05, 1), 4);
+                sleep((int) $delay);
+
+                // Send the message part
+                Telegram::sendMessage($this->user->telegram_chat_id, $part);
+
+                // CRITICAL: Save each part to DB for context continuity
+                Message::create([
+                    'user_id' => $this->user->id,
+                    'persona_id' => $this->user->persona?->id,
+                    'sender_type' => 'bot',
+                    'content' => $part,
+                ]);
+
+                Log::info('ProcessChatResponse: Message part sent', [
+                    'user_id' => $this->user->id,
+                    'part_index' => $index + 1,
+                    'total_parts' => count($parts),
+                    'length' => strlen($part),
+                    'delay' => $delay,
+                ]);
+            }
         } elseif (!$hasImage && $hasAudio && $textPart) {
-            // If only audio (no image to use text as caption), send text separately
-            Telegram::sendMessage($this->user->telegram_chat_id, $textPart);
+            // If only audio (no image to use text as caption), split and send text separately
+            $parts = explode('<SPLIT>', $textPart);
 
-            // CRITICAL: Save bot text response to DB (in addition to voice note record above)
-            Message::create([
-                'user_id' => $this->user->id,
-                'persona_id' => $this->user->persona?->id,
-                'sender_type' => 'bot',
-                'content' => $textPart,
-            ]);
+            foreach ($parts as $index => $part) {
+                $part = trim($part);
+
+                if (empty($part)) {
+                    continue;
+                }
+
+                Telegram::sendChatAction($this->user->telegram_chat_id, 'typing');
+                $delay = min(max(strlen($part) * 0.05, 1), 4);
+                sleep((int) $delay);
+
+                Telegram::sendMessage($this->user->telegram_chat_id, $part);
+
+                Message::create([
+                    'user_id' => $this->user->id,
+                    'persona_id' => $this->user->persona?->id,
+                    'sender_type' => 'bot',
+                    'content' => $part,
+                ]);
+            }
         }
     }
 }

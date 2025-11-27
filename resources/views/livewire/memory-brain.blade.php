@@ -54,11 +54,11 @@
                                     <td class="px-6 py-4 font-medium">{{ $memory->category }}</td>
                                     <td class="px-6 py-4">{{ $memory->target }}</td>
                                     <td class="px-6 py-4">{{ $memory->value }}</td>
-                                    <td class="px-6 py-4 text-gray-600 dark:text-gray-400 max-w-xs truncate">
+                                    <td class="px-6 py-4 text-gray-600 dark:text-gray-400 max-w-xs">
                                         {{ $memory->context ?? 'N/A' }}
                                     </td>
                                     <td class="px-6 py-4 text-gray-600 dark:text-gray-400">
-                                        {{ $memory->created_at->format('M d, Y') }}
+                                        {{ $memory->created_at->format('M d, Y H:i') }}
                                     </td>
                                     <td class="px-6 py-4 space-x-2">
                                         <button
