@@ -121,8 +121,17 @@ PROMPT;
         ?string $imagePath = null
     ): string {
         try {
-            // Build the context prompt
-            $memoryContext = $this->buildMemoryContext($memoryTags);
+            // Get latest user message for keyword analysis
+            $latestUserMessage = $chatHistory
+                ->where('sender_type', 'user')
+                ->last();
+            $userMessageText = $latestUserMessage?->content ?? '';
+
+            // Use tiered memory loading instead of all tags
+            $relevantMemoryTags = $this->getRelevantMemoryTags($persona, $userMessageText);
+
+            // Build the context prompt with relevant memories only
+            $memoryContext = $this->buildMemoryContext($relevantMemoryTags);
             $conversationHistory = $this->buildConversationHistory($chatHistory);
 
             // Get media usage instructions based on persona preferences
@@ -960,6 +969,94 @@ PROMPT;
     // ============================================================================
     // CONTEXT BUILDING METHODS
     // ============================================================================
+
+    /**
+     * Get relevant memory tags using tiered loading strategy.
+     * Prevents context pollution by only loading necessary facts.
+     *
+     * @param Persona $persona
+     * @param string $userMessage The latest user message for keyword analysis
+     * @return Collection Filtered memory tags
+     */
+    private function getRelevantMemoryTags(Persona $persona, string $userMessage): Collection
+    {
+        $relevantTags = collect();
+
+        // TIER 1: Recency - Recent events are always relevant
+        $recentTags = $persona->memoryTags()
+            ->where('updated_at', '>=', now()->subDays(3))
+            ->get();
+        $relevantTags = $relevantTags->merge($recentTags);
+
+        Log::info('GeminiBrainService: Tier 1 (Recency) loaded', [
+            'count' => $recentTags->count(),
+        ]);
+
+        // TIER 2: Core Categories - Always needed
+        $coreCategories = ['daily_outfit', 'night_outfit', 'basic_info', 'name', 'age', 'location'];
+        $coreTags = $persona->memoryTags()
+            ->whereIn('category', $coreCategories)
+            ->get();
+        $relevantTags = $relevantTags->merge($coreTags);
+
+        Log::info('GeminiBrainService: Tier 2 (Core) loaded', [
+            'count' => $coreTags->count(),
+        ]);
+
+        // TIER 3: Keyword Relevance - Lite RAG
+        $keywordMap = [
+            // Food-related
+            ['keywords' => ['eat', 'food', 'hungry', 'dinner', 'lunch', 'breakfast', 'meal', 'cook', 'restaurant'], 'categories' => ['food_preference', 'favorite_food', 'diet']],
+            // Music-related
+            ['keywords' => ['music', 'song', 'listen', 'playlist', 'band', 'artist', 'album'], 'categories' => ['music', 'favorite_music', 'music_taste']],
+            // Work-related
+            ['keywords' => ['work', 'job', 'office', 'boss', 'colleague', 'meeting', 'project', 'career'], 'categories' => ['work', 'job', 'career', 'occupation']],
+            // Hobby-related
+            ['keywords' => ['hobby', 'game', 'play', 'sport', 'exercise', 'gym', 'read', 'book'], 'categories' => ['hobby', 'hobbies', 'interests', 'sports', 'gaming']],
+            // Health-related
+            ['keywords' => ['sick', 'health', 'doctor', 'medicine', 'hospital', 'pain', 'feel', 'tired'], 'categories' => ['health', 'medical', 'wellness']],
+            // Relationship-related
+            ['keywords' => ['family', 'friend', 'relationship', 'love', 'partner', 'mom', 'dad', 'sibling'], 'categories' => ['family', 'relationships', 'friends']],
+            // Travel-related
+            ['keywords' => ['travel', 'trip', 'vacation', 'flight', 'hotel', 'visit'], 'categories' => ['travel', 'places_visited']],
+            // Mood/Emotion
+            ['keywords' => ['happy', 'sad', 'angry', 'excited', 'nervous', 'stressed', 'mood'], 'categories' => ['mood', 'emotional_state', 'feelings']],
+        ];
+
+        $userMessageLower = strtolower($userMessage);
+        $matchedCategories = [];
+
+        foreach ($keywordMap as $mapping) {
+            foreach ($mapping['keywords'] as $keyword) {
+                if (str_contains($userMessageLower, $keyword)) {
+                    $matchedCategories = array_merge($matchedCategories, $mapping['categories']);
+                    break; // Found a match for this mapping, move to next
+                }
+            }
+        }
+
+        if (!empty($matchedCategories)) {
+            $matchedCategories = array_unique($matchedCategories);
+            $keywordTags = $persona->memoryTags()
+                ->whereIn('category', $matchedCategories)
+                ->get();
+            $relevantTags = $relevantTags->merge($keywordTags);
+
+            Log::info('GeminiBrainService: Tier 3 (Keywords) loaded', [
+                'matched_categories' => $matchedCategories,
+                'count' => $keywordTags->count(),
+            ]);
+        }
+
+        // TIER 4: Deduplication - Remove duplicates by ID
+        $relevantTags = $relevantTags->unique('id');
+
+        Log::info('GeminiBrainService: Final relevant tags', [
+            'total_count' => $relevantTags->count(),
+        ]);
+
+        return $relevantTags;
+    }
 
     /**
      * Build memory context string from memory tags.
