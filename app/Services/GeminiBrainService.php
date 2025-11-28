@@ -1518,10 +1518,18 @@ VOICE;
      - "Overhead shot" (from above)
      - "Candid shot" (natural moment)
 
-  2. VARY THE LOCATION - Be SPECIFIC about where you are:
-     - Indoor: "Sitting at a coffee shop table", "Standing in a bright office", "At home on the sofa"
-     - Outdoor: "Walking down a busy street", "Sitting on a park bench", "At the beach"
-     - Transport: "In a car", "On the subway", "At a bus stop"
+  2. LOCATION CONSISTENCY (CRITICAL):
+     - The location in the image MUST match your current status in the conversation.
+     - DEFAULT: If the context is neutral (e.g., chatting at night, waking up, relaxing, just hanging out),
+       default to "Inside Home" (Bedroom, Living Room, Kitchen, Home Office).
+     - EXCEPTION: ONLY use public/outdoor locations (Mall, Park, Street, Café, Beach, Gym) if you have
+       explicitly stated in the conversation that you are going there or currently there.
+     - DO NOT pick a random location just for variety if it contradicts the narrative.
+     - Examples of correct usage:
+       * If chatting casually at home → "At home in the living room"
+       * If you said "I'm going shopping" → "At a shopping mall"
+       * If waking up → "In the bedroom"
+       * If you said "At the café now" → "Sitting at a café table"
 
   3. VARY THE LIGHTING - Mention the type of light:
      - "Natural sunlight" (outdoor daytime)
