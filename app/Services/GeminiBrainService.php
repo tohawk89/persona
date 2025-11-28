@@ -744,6 +744,9 @@ PROMPT;
         $lighting = $this->extractOrRandomize('lighting', $sanitizedPrompt, $this->getRandomLighting());
         $location = $this->extractOrRandomize('location', $sanitizedPrompt, $this->getRandomLocation());
 
+        // Filter outfit based on shot type (remove footwear for upper-body shots)
+        $filteredOutfit = $this->filterOutfitForShot($currentOutfit ?? '', $shotType);
+
         // Build subject description
         $subjectDescription = $sanitizedPrompt;
 
@@ -754,8 +757,8 @@ PROMPT;
         if ($persona->physical_traits) {
             $fullPrompt .= "The subject is a woman with {$persona->physical_traits}";
 
-            if ($currentOutfit) {
-                $fullPrompt .= ", wearing {$currentOutfit}";
+            if ($filteredOutfit) {
+                $fullPrompt .= ", wearing {$filteredOutfit}";
             }
 
             $fullPrompt .= ". ";
@@ -872,6 +875,90 @@ PROMPT;
         ];
 
         return $locations[array_rand($locations)];
+    }
+
+    /**
+     * Filter outfit description based on shot type.
+     * Removes footwear and lower-body items for upper-body shots to prevent "floating shoes".
+     */
+    private function filterOutfitForShot(string $outfit, string $shotType): string
+    {
+        if (empty($outfit)) {
+            return '';
+        }
+
+        // Define upper-body shot types where feet/legs are not visible
+        $upperBodyShots = [
+            'selfie',
+            'close-up',
+            'portrait',
+            'headshot',
+            'bust shot',
+            'pov',
+        ];
+
+        // Check if current shot type is upper-body
+        $isUpperBody = false;
+        foreach ($upperBodyShots as $type) {
+            if (stripos($shotType, $type) !== false) {
+                $isUpperBody = true;
+                break;
+            }
+        }
+
+        // If not upper-body shot, return original outfit
+        if (!$isUpperBody) {
+            return $outfit;
+        }
+
+        // Define lower-body keywords to remove
+        $lowerBodyKeywords = [
+            'sandal',
+            'sandals',
+            'shoe',
+            'shoes',
+            'sneaker',
+            'sneakers',
+            'boot',
+            'boots',
+            'heel',
+            'heels',
+            'skirt',
+            'jeans',
+            'pants',
+            'trousers',
+            'shorts',
+            'leg',
+            'legs',
+            'socks',
+            'stockings',
+            'tights',
+        ];
+
+        // Remove lower-body keywords (case-insensitive)
+        $filtered = $outfit;
+        foreach ($lowerBodyKeywords as $keyword) {
+            $filtered = preg_replace('/\b' . preg_quote($keyword, '/') . '\b/i', '', $filtered);
+        }
+
+        // Clean up leftover punctuation and words
+        $filtered = preg_replace('/\s+with\s+$/i', '', $filtered); // Remove trailing "with"
+        $filtered = preg_replace('/\s+and\s+$/i', '', $filtered); // Remove trailing "and"
+        $filtered = preg_replace('/,\s*,/', ',', $filtered); // Remove double commas
+        $filtered = preg_replace('/,\s*$/', '', $filtered); // Remove trailing comma
+        $filtered = preg_replace('/\s+/', ' ', $filtered); // Normalize whitespace
+        $filtered = trim($filtered);
+
+        // Remove dangling connectors at the end
+        $filtered = preg_replace('/\s+(with|and)\s*$/i', '', $filtered);
+
+        Log::info('GeminiBrainService: Filtered outfit for shot type', [
+            'original' => $outfit,
+            'filtered' => $filtered,
+            'shot_type' => $shotType,
+        ]);
+
+        return $filtered;
     }
 
     /**
