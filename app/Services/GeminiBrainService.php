@@ -704,22 +704,53 @@ PROMPT;
 
     /**
      * Build enhanced image prompt with traits and styling.
+     * Dynamically constructs camera angles, lighting, and locations for variety.
+     * Supports POV/Scenery mode where persona is not visible.
      */
     private function buildImagePrompt(string $prompt, Persona $persona): string
     {
-        // Define the "Realism Booster" - forces photorealistic, candid style
-        $styleBooster = "shot on iPhone, candid photography, natural lighting, grainy texture, skin pores, slight imperfections, 4k, hyper-realistic";
-
         // Sanitize prompt to avoid NSFW flags
         $sanitizedPrompt = $this->sanitizePromptForImageGeneration($prompt);
+
+        // Detect if this is a POV/Scenery shot (no persona in frame)
+        $isPovMode = preg_match('/^(POV|SCENERY):\s*/i', $sanitizedPrompt, $modeMatch);
+
+        if ($isPovMode) {
+            // Remove the POV:/SCENERY: prefix
+            $cleanDescription = preg_replace('/^(POV|SCENERY):\s*/i', '', $sanitizedPrompt);
+            $mode = strtoupper($modeMatch[1]);
+
+            // Build POV prompt without persona traits
+            $fullPrompt = "Point of view shot (POV) of {$cleanDescription}. ";
+            $fullPrompt .= "Photorealistic, 8k, raw photo, shot on iPhone, film grain.";
+
+            Log::info('GeminiBrainService: Built POV/Scenery image prompt', [
+                'mode' => $mode,
+                'description' => $cleanDescription,
+            ]);
+
+            return $fullPrompt;
+        }
+
+        // Standard SELFIE mode - include persona traits
+        // Remove SELFIE: prefix if present
+        $sanitizedPrompt = preg_replace('/^SELFIE:\s*/i', '', $sanitizedPrompt);
 
         // Get current outfit based on time of day
         $currentOutfit = $this->getCurrentOutfit($persona->id);
 
-        // Construct the final prompt following the Realism Formula
-        // Order: Subject & Action → The Person → The Outfit → The Vibe
-        $fullPrompt = "A candid photo of {$sanitizedPrompt}. ";
+        // Parse or randomize visual elements
+        $shotType = $this->extractOrRandomize('shot type', $sanitizedPrompt, $this->getRandomShotType());
+        $lighting = $this->extractOrRandomize('lighting', $sanitizedPrompt, $this->getRandomLighting());
+        $location = $this->extractOrRandomize('location', $sanitizedPrompt, $this->getRandomLocation());
 
+        // Build subject description
+        $subjectDescription = $sanitizedPrompt;
+
+        // Construct the dynamic prompt
+        $fullPrompt = "A photo of {$subjectDescription}. ";
+
+        // Add physical traits
         if ($persona->physical_traits) {
             $fullPrompt .= "The subject is a woman with {$persona->physical_traits}";
 
@@ -730,7 +761,13 @@ PROMPT;
             $fullPrompt .= ". ";
         }
 
-        $fullPrompt .= "Style: {$styleBooster}.";
+        // Add dynamic visual elements
+        $fullPrompt .= "Shot as a {$shotType}. ";
+        $fullPrompt .= "Located in {$location}. ";
+        $fullPrompt .= "Lighting is {$lighting}. ";
+
+        // Add technical quality tags (removed 'candid' to allow variety)
+        $fullPrompt .= "Style: 4k, hyper-realistic, film grain, raw photo.";
 
         // Safety check: truncate if exceeds 1000 characters to avoid API errors
         if (strlen($fullPrompt) > 1000) {
@@ -741,7 +778,100 @@ PROMPT;
             ]);
         }
 
+        Log::info('GeminiBrainService: Built dynamic image prompt', [
+            'shot_type' => $shotType,
+            'lighting' => $lighting,
+            'location' => $location,
+        ]);
+
         return $fullPrompt;
+    }
+
+    /**
+     * Extract specific visual element from prompt or use random default.
+     */
+    private function extractOrRandomize(string $type, string $prompt, string $default): string
+    {
+        // Check if prompt already specifies this element
+        $patterns = [
+            'shot type' => '/(full body|mirror selfie|pov|wide shot|close-up|portrait|selfie|overhead shot|low angle)/i',
+            'lighting' => '/(sunlight|evening light|flash|dim|bright|natural|golden hour|studio|neon|soft)/i',
+            'location' => '/(park|subway|coffee shop|street|home|office|beach|restaurant|gym|mall|outdoor|indoor)/i',
+        ];
+
+        if (isset($patterns[$type]) && preg_match($patterns[$type], $prompt, $matches)) {
+            return $matches[1];
+        }
+
+        return $default;
+    }
+
+    /**
+     * Get random shot type for variety.
+     */
+    private function getRandomShotType(): string
+    {
+        $shotTypes = [
+            'full body outfit check',
+            'mirror selfie',
+            'POV shot',
+            'wide environmental shot',
+            'close-up portrait',
+            'candid selfie',
+            'overhead shot',
+            'low angle shot',
+            'medium shot',
+            'three-quarter portrait',
+        ];
+
+        return $shotTypes[array_rand($shotTypes)];
+    }
+
+    /**
+     * Get random lighting for variety.
+     */
+    private function getRandomLighting(): string
+    {
+        $lightingTypes = [
+            'natural sunlight',
+            'dim evening light',
+            'bright daylight',
+            'soft morning light',
+            'golden hour glow',
+            'overcast diffused light',
+            'indoor warm lighting',
+            'fluorescent lighting',
+            'backlit silhouette',
+            'side lighting',
+        ];
+
+        return $lightingTypes[array_rand($lightingTypes)];
+    }
+
+    /**
+     * Get random location for variety.
+     */
+    private function getRandomLocation(): string
+    {
+        $locations = [
+            'a park bench',
+            'a busy street',
+            'a cozy coffee shop',
+            'a modern office',
+            'a bright room at home',
+            'a shopping mall',
+            'a subway station',
+            'an outdoor plaza',
+            'a restaurant table',
+            'a gym',
+            'a beach',
+            'a balcony',
+            'a car interior',
+            'a library',
+            'a staircase',
+        ];
+
+        return $locations[array_rand($locations)];
     }
 
     /**
@@ -1275,8 +1405,44 @@ VOICE;
 
             $instructions[] = <<<IMAGE
 - If you want to generate an image, use the tag: [GENERATE_IMAGE: description]
-  Example: [GENERATE_IMAGE: Portrait of a person smiling at the camera in a bright room]
   {$imageGuidance}
+
+  CRITICAL: DECIDE THE IMAGE TYPE FIRST:
+
+  TYPE 1 - SELFIE/PORTRAIT (You are IN the photo):
+  - Use when: User asks "send me a selfie", "show me your outfit", "what do you look like", or you want to share yourself
+  - Format: [GENERATE_IMAGE: SELFIE: description]
+  - Example: [GENERATE_IMAGE: SELFIE: Drinking coffee at a café table]
+  - Example: [GENERATE_IMAGE: SELFIE: Full body outfit check in a bright room]
+
+  TYPE 2 - POV/SCENERY (You are NOT in the photo, photographing something):
+  - Use when: Sharing what you're seeing (sunset, food, pet, object, view)
+  - Format: [GENERATE_IMAGE: POV: description]
+  - Example: [GENERATE_IMAGE: POV: A beautiful pink sunset sky with clouds]
+  - Example: [GENERATE_IMAGE: POV: A cup of latte with heart art on a wooden table]
+  - Example: [GENERATE_IMAGE: POV: A cute orange cat sleeping on a cushion]
+
+  FOR SELFIE MODE - CRITICAL VARIETY RULES (MUST FOLLOW TO AVOID REPETITION):
+  1. VARY THE CAMERA ANGLE - Do not always use standard portraits. Mix it up:
+     - "Full body outfit check" (show entire outfit)
+     - "Mirror selfie" (reflective surface)
+     - "Wide shot in [location]" (environmental context)
+     - "Close-up portrait" (face focus)
+     - "Overhead shot" (from above)
+     - "Candid shot" (natural moment)
+
+  2. VARY THE LOCATION - Be SPECIFIC about where you are:
+     - Indoor: "Sitting at a coffee shop table", "Standing in a bright office", "At home on the sofa"
+     - Outdoor: "Walking down a busy street", "Sitting on a park bench", "At the beach"
+     - Transport: "In a car", "On the subway", "At a bus stop"
+
+  3. VARY THE LIGHTING - Mention the type of light:
+     - "Natural sunlight" (outdoor daytime)
+     - "Soft morning light" (gentle, warm)
+     - "Dim evening light" (low-key, cozy)
+     - "Bright indoor lighting" (fluorescent, office)
+     - "Golden hour glow" (sunset/sunrise)
+
   IMPORTANT: Keep descriptions professional and appropriate. Avoid mentioning beds, bedrooms, or intimate settings.
   Use safe contexts like: coffee shops, parks, streets, studios, bright rooms, outdoor settings.
 IMAGE;
