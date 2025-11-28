@@ -57,45 +57,12 @@ class ProcessScheduledEvent implements ShouldQueue
                     'generated_length' => strlen($generatedResponse),
                 ]);
 
-                // Send appropriate message type based on event type
-                if ($event->type === 'text') {
-                    // Text event - send the generated response
-                    Telegram::sendStreamingMessage(
-                        $user->telegram_chat_id,
-                        $generatedResponse
-                    );
-                } elseif ($event->type === 'image_generation') {
-                    // Image generation event - response may contain [GENERATE_IMAGE:] tag
-                    if (str_contains($generatedResponse, '[GENERATE_IMAGE:')) {
-                        // Image tag will be processed and replaced with [IMAGE: url]
-                        Telegram::sendStreamingMessage(
-                            $user->telegram_chat_id,
-                            $generatedResponse
-                        );
-                    } else {
-                        // No image tag in response, generate based on instruction
-                        Telegram::sendChatAction($user->telegram_chat_id, 'upload_photo');
-
-                        $imageUrl = \App\Facades\GeminiBrain::generateImage(
-                            $event->context_prompt,
-                            $event->persona
-                        );
-
-                        if ($imageUrl) {
-                            Telegram::sendPhoto(
-                                $user->telegram_chat_id,
-                                $imageUrl,
-                                $generatedResponse
-                            );
-                        } else {
-                            // Fallback to text if image generation fails
-                            Telegram::sendMessage(
-                                $user->telegram_chat_id,
-                                $generatedResponse
-                            );
-                        }
-                    }
-                }
+                // Send the generated response (handles both text and image events)
+                // The sendStreamingMessage method will handle [IMAGE:] tags automatically
+                Telegram::sendStreamingMessage(
+                    $user->telegram_chat_id,
+                    $generatedResponse
+                );
 
                 // Save the generated message to database for context
                 $event->persona->messages()->create([

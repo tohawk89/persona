@@ -64,15 +64,51 @@ class TelegramService
     public function sendStreamingMessage(string|int $chatId, string $message): bool
     {
         try {
-            // Send typing action
-            $this->sendChatAction($chatId, 'typing');
+            // Process special tags before sending
+            $processedMessage = $this->processMessageTags($message);
 
-            // For simplicity, we'll just send the full message after a short delay
-            // In a real streaming implementation, you might update a single message
-            // or send chunks, but Telegram has rate limits to consider
-            sleep(1); // Simulate typing delay
+            // Split message by <SPLIT> tags if present
+            $parts = preg_split('/<SPLIT>/i', $processedMessage);
+            $parts = array_filter(array_map('trim', $parts));
 
-            return $this->sendMessage($chatId, $message);
+            if (empty($parts)) {
+                return true; // Nothing to send
+            }
+
+            // Send each part as separate message
+            foreach ($parts as $index => $part) {
+                if (empty($part)) {
+                    continue;
+                }
+
+                // Send typing action before each message
+                $this->sendChatAction($chatId, 'typing');
+                sleep(1); // Typing delay
+
+                // Check if part contains [IMAGE:] tag
+                if (preg_match('/\[IMAGE:\s*([^\]]+)\]/', $part, $matches)) {
+                    $imageUrl = trim($matches[1]);
+                    // Remove the tag from caption
+                    $caption = trim(str_replace($matches[0], '', $part));
+
+                    // Send as photo
+                    if (!empty($caption)) {
+                        $this->sendPhoto($chatId, $imageUrl, $caption);
+                    } else {
+                        $this->sendPhoto($chatId, $imageUrl);
+                    }
+                } else {
+                    // Send as text message
+                    $this->sendMessage($chatId, $part);
+                }
+
+                // Small delay between messages
+                if ($index < count($parts) - 1) {
+                    usleep(500000); // 0.5 second delay
+                }
+            }
+
+            return true;
         } catch (\Exception $e) {
             Log::error('TelegramService: Failed to send streaming message', [
                 'chat_id' => $chatId,
@@ -81,6 +117,24 @@ class TelegramService
 
             return false;
         }
+    }
+
+    /**
+     * Process special tags in message before sending.
+     * Removes tags that shouldn't be sent to user.
+     *
+     * @param string $message
+     * @return string
+     */
+    private function processMessageTags(string $message): string
+    {
+        // Remove [MOOD:], [NO_REPLY:], [GENERATE_IMAGE:], [SEND_VOICE:] tags
+        $message = preg_replace('/\[MOOD:\s*[^\]]+\]/i', '', $message);
+        $message = preg_replace('/\[NO_REPLY\]/i', '', $message);
+        $message = preg_replace('/\[GENERATE_IMAGE:\s*[^\]]+\]/i', '', $message);
+        $message = preg_replace('/\[SEND_VOICE:\s*[^\]]+\]/i', '', $message);
+
+        return trim($message);
     }
 
     /**
