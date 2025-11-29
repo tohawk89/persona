@@ -17,6 +17,7 @@ class PersonaManager extends Component
     public $system_prompt;
     public $appearance_description;
     public $physical_traits;
+    public $gender;
     public $wake_time;
     public $sleep_time;
     public $voice_frequency;
@@ -32,6 +33,7 @@ class PersonaManager extends Component
         'system_prompt' => 'required|string|min:10',
         'appearance_description' => 'nullable|string',
         'physical_traits' => 'nullable|string',
+        'gender' => 'required|in:male,female,non-binary,other',
         'wake_time' => 'required|date_format:H:i',
         'sleep_time' => 'required|date_format:H:i',
         'voice_frequency' => 'required|in:never,rare,moderate,frequent',
@@ -50,6 +52,7 @@ class PersonaManager extends Component
             $this->system_prompt = $this->persona->system_prompt;
             $this->appearance_description = $this->persona->appearance_description;
             $this->physical_traits = $this->persona->physical_traits;
+            $this->gender = $this->persona->gender ?? 'female';
             // Convert HH:MM:SS to HH:MM for time input
             $this->wake_time = substr($this->persona->wake_time, 0, 5);
             $this->sleep_time = substr($this->persona->sleep_time, 0, 5);
@@ -58,6 +61,7 @@ class PersonaManager extends Component
             $this->is_active = $this->persona->is_active;
         } else {
             // Set defaults
+            $this->gender = 'female';
             $this->wake_time = '07:00';
             $this->sleep_time = '23:00';
             $this->voice_frequency = 'moderate';
@@ -99,6 +103,7 @@ class PersonaManager extends Component
             'system_prompt' => $this->system_prompt,
             'appearance_description' => $this->appearance_description,
             'physical_traits' => $this->physical_traits,
+            'gender' => $this->gender,
             'wake_time' => $this->wake_time,
             'sleep_time' => $this->sleep_time,
             'voice_frequency' => $this->voice_frequency,

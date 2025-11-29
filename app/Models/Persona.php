@@ -18,6 +18,7 @@ class Persona extends Model implements HasMedia
         'system_prompt',
         'appearance_description',
         'physical_traits',
+        'gender',
         'wake_time',
         'sleep_time',
         'voice_frequency',

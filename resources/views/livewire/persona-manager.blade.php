@@ -111,7 +111,7 @@
                                 wire:click="optimizePhysicalTraits"
                                 wire:loading.attr="disabled"
                                 wire:target="optimizePhysicalTraits"
-                                class="px-6 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-colors duration-200 flex items-center space-x-2"
+                                class="px-6 py-2 bg-pink-600 hover:bg-pink-700 disabled:bg-pink-400 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-colors duration-200 flex items-center space-x-2"
                             >
                                 <span wire:loading.remove wire:target="optimizePhysicalTraits">✨</span>
                                 <svg wire:loading wire:target="optimizePhysicalTraits" class="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -138,6 +138,23 @@
                             <p class="text-xs text-gray-500 mt-1">You can manually edit this if needed</p>
                             @error('physical_traits') <span class="text-red-500 text-sm">{{ $message }}</span> @enderror
                         </div>
+                    </div>
+
+                    <!-- Gender Selection -->
+                    <div>
+                        <label for="gender" class="block text-sm font-medium mb-2">Gender *</label>
+                        <select
+                            wire:model="gender"
+                            id="gender"
+                            class="w-full px-4 py-2 bg-white dark:bg-gray-800 border-2 border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                        >
+                            <option value="female">Female</option>
+                            <option value="male">Male</option>
+                            <option value="non-binary">Non-Binary</option>
+                            <option value="other">Other</option>
+                        </select>
+                        <p class="text-xs text-gray-500 mt-1">Used for image generation and pronouns</p>
+                        @error('gender') <span class="text-red-500 text-sm">{{ $message }}</span> @enderror
                     </div>
 
                     <!-- Wake and Sleep Times -->

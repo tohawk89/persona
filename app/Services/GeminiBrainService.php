@@ -747,6 +747,18 @@ PROMPT;
         // Filter outfit based on shot type (remove footwear for upper-body shots)
         $filteredOutfit = $this->filterOutfitForShot($currentOutfit ?? '', $shotType);
 
+        // Fetch dynamic traits from memory tags
+        $dynamicTraits = MemoryTag::where('persona_id', $persona->id)
+            ->where('category', 'physical_look')
+            ->value('value');
+
+        // Filter traits for context (handle hijab, hair evolution, etc.)
+        $finalTraits = $this->filterTraitsForContext(
+            $persona->physical_traits ?? '',
+            $dynamicTraits ?? '',
+            $currentOutfit ?? ''
+        );
+
         // Build subject description
         $subjectDescription = $sanitizedPrompt;
 
@@ -754,8 +766,17 @@ PROMPT;
         $fullPrompt = "A photo of {$subjectDescription}. ";
 
         // Add physical traits
-        if ($persona->physical_traits) {
-            $fullPrompt .= "The subject is a woman with {$persona->physical_traits}";
+        if ($finalTraits) {
+            // Get gender description (defaults to 'person' if not set)
+            $genderDesc = match($persona->gender ?? 'female') {
+                'male' => 'a man',
+                'female' => 'a woman',
+                'non-binary' => 'a person',
+                'other' => 'a person',
+                default => 'a person',
+            };
+
+            $fullPrompt .= "The subject is {$genderDesc} with {$finalTraits}";
 
             if ($filteredOutfit) {
                 $fullPrompt .= ", wearing {$filteredOutfit}";
@@ -959,6 +980,102 @@ PROMPT;
         ]);
 
         return $filtered;
+    }
+
+    /**
+     * Filter physical traits based on context.
+     * Handles conflicts between static traits, dynamic updates, and outfit choices.
+     */
+    private function filterTraitsForContext(string $staticTraits, string $dynamicTraits, string $outfit): string
+    {
+        // Define keywords
+        $hairKeywords = [
+            'hair', 'long', 'short', 'curly', 'straight', 'wavy',
+            'blonde', 'brunette', 'black', 'brown', 'red',
+            'bangs', 'ponytail', 'braid', 'bun', 'tied',
+        ];
+
+        $coveringKeywords = [
+            'hijab', 'tudung', 'headscarf', 'veil', 'niqab', 'khimar',
+        ];
+
+        $cleanedStatic = $staticTraits;
+        $cleanedDynamic = $dynamicTraits;
+
+        // STEP A: Check for head covering
+        $hasHeadCovering = false;
+        foreach ($coveringKeywords as $keyword) {
+            if (stripos($outfit, $keyword) !== false) {
+                $hasHeadCovering = true;
+                break;
+            }
+        }
+
+        if ($hasHeadCovering) {
+            // Remove ALL hair descriptions from both static and dynamic traits
+            foreach ($hairKeywords as $hairWord) {
+                $cleanedStatic = preg_replace('/\b' . preg_quote($hairWord, '/') . '\b[^,.]*/i', '', $cleanedStatic);
+                $cleanedDynamic = preg_replace('/\b' . preg_quote($hairWord, '/') . '\b[^,.]*/i', '', $cleanedDynamic);
+            }
+
+            Log::info('GeminiBrainService: Head covering detected, removed hair descriptions', [
+                'original_static' => $staticTraits,
+                'original_dynamic' => $dynamicTraits,
+            ]);
+        } else {
+            // STEP B: Handle hair evolution (dynamic overrides static)
+            $dynamicHasHair = false;
+            foreach ($hairKeywords as $hairWord) {
+                if (stripos($dynamicTraits, $hairWord) !== false) {
+                    $dynamicHasHair = true;
+                    break;
+                }
+            }
+
+            if ($dynamicHasHair) {
+                // Remove hair descriptions from static traits (dynamic takes precedence)
+                foreach ($hairKeywords as $hairWord) {
+                    $cleanedStatic = preg_replace('/\b' . preg_quote($hairWord, '/') . '\b[^,.]*/i', '', $cleanedStatic);
+                }
+
+                Log::info('GeminiBrainService: Dynamic hair trait detected, overriding static', [
+                    'original_static' => $staticTraits,
+                    'dynamic' => $dynamicTraits,
+                ]);
+            }
+        }
+
+        // Clean up punctuation and whitespace
+        $cleanedStatic = preg_replace('/,\s*,/', ',', $cleanedStatic);
+        $cleanedStatic = preg_replace('/,\s*$/', '', $cleanedStatic);
+        $cleanedStatic = preg_replace('/^\s*,/', '', $cleanedStatic);
+        $cleanedStatic = preg_replace('/\s+/', ' ', $cleanedStatic);
+        $cleanedStatic = trim($cleanedStatic);
+
+        $cleanedDynamic = preg_replace('/,\s*,/', ',', $cleanedDynamic);
+        $cleanedDynamic = preg_replace('/,\s*$/', '', $cleanedDynamic);
+        $cleanedDynamic = preg_replace('/^\s*,/', '', $cleanedDynamic);
+        $cleanedDynamic = preg_replace('/\s+/', ' ', $cleanedDynamic);
+        $cleanedDynamic = trim($cleanedDynamic);
+
+        // STEP C: Merge cleaned traits
+        $merged = collect([$cleanedStatic, $cleanedDynamic])
+            ->filter()
+            ->implode(', ');
+
+        // Final cleanup
+        $merged = preg_replace('/,\s*,/', ',', $merged);
+        $merged = preg_replace('/\s+/', ' ', $merged);
+        $merged = trim($merged);
+
+        Log::info('GeminiBrainService: Filtered traits for context', [
+            'static' => $staticTraits,
+            'dynamic' => $dynamicTraits,
+            'outfit' => $outfit,
+            'final' => $merged,
+        ]);
+
+        return $merged;
     }
 
     /**
