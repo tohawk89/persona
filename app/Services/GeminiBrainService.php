@@ -773,8 +773,12 @@ PROMPT;
             $currentOutfit ?? ''
         );
 
-        // Build subject description
+        // Build subject description - remove outfit mentions since we add filtered outfit separately
         $subjectDescription = $sanitizedPrompt;
+        // Remove "wearing..." clause from AI's description to avoid duplication
+        // Match "wearing X, with Y, with Z" pattern and remove everything after "wearing"
+        $subjectDescription = preg_replace('/,?\s*wearing\s+[^,]+(?:,\s*(?:with|and)\s+[^,]+)*/', '', $subjectDescription);
+        $subjectDescription = trim($subjectDescription, ', ');
 
         // Construct the dynamic prompt
         $fullPrompt = "A photo of {$subjectDescription}. ";
