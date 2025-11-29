@@ -790,7 +790,14 @@ PROMPT;
                 default => 'a person',
             };
 
-            $fullPrompt .= "The subject is {$genderDesc} with {$finalTraits}";
+            // Extract just the traits (remove sentence structure if present)
+            // Remove patterns like "A stunning young Korean woman with an oval face shape, Hana possesses..."
+            $cleanTraits = preg_replace('/^A stunning (?:young )?\w+ (?:woman|man|person) with an? /', '', $finalTraits);
+            $cleanTraits = preg_replace('/,\s*[A-Z][a-z]+ possesses /', ', ', $cleanTraits); // Remove ", Hana possesses"
+            $cleanTraits = preg_replace('/\. Her features include /', ', ', $cleanTraits); // Connect sentences
+            $cleanTraits = trim($cleanTraits, ' .,');
+
+            $fullPrompt .= "The subject is {$genderDesc} with {$cleanTraits}";
 
             if ($filteredOutfit) {
                 $fullPrompt .= ", wearing {$filteredOutfit}";
@@ -970,16 +977,20 @@ PROMPT;
             'tights',
         ];
 
-        // Remove lower-body keywords (case-insensitive)
+        // Remove lower-body keywords with surrounding context (case-insensitive)
         $filtered = $outfit;
         foreach ($lowerBodyKeywords as $keyword) {
+            // Remove keyword with preceding adjectives (e.g., "espadrille sandals" not just "sandals")
+            $filtered = preg_replace('/\b[\w-]+\s+' . preg_quote($keyword, '/') . '\b/i', '', $filtered);
+            // Also remove standalone keyword
             $filtered = preg_replace('/\b' . preg_quote($keyword, '/') . '\b/i', '', $filtered);
         }
 
         // Clean up leftover punctuation and words
+        $filtered = preg_replace('/\s+(with|and)\s+,/i', ',', $filtered); // Remove "and ," or "with ,"
         $filtered = preg_replace('/\s+with\s+$/i', '', $filtered); // Remove trailing "with"
         $filtered = preg_replace('/\s+and\s+$/i', '', $filtered); // Remove trailing "and"
-        $filtered = preg_replace('/,\s*,/', ',', $filtered); // Remove double commas
+        $filtered = preg_replace('/,\s*,+/', ',', $filtered); // Remove multiple commas
         $filtered = preg_replace('/,\s*$/', '', $filtered); // Remove trailing comma
         $filtered = preg_replace('/\s+/', ' ', $filtered); // Normalize whitespace
         $filtered = trim($filtered);
