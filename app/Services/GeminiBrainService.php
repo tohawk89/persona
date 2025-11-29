@@ -29,6 +29,11 @@ class GeminiBrainService
     private const NIGHT_TIME_START = 21; // 9 PM
     private const NIGHT_TIME_END = 6; // 6 AM
 
+    // Cache for frequently accessed data
+    private array $outfitCache = [];
+    private array $moodCache = [];
+    private ?Persona $currentPersona = null;
+
     public function __construct(private readonly ImageGeneratorInterface $imageGenerator)
     {
     }
@@ -166,13 +171,7 @@ PROMPT;
             $mediaInstructions = $this->buildMediaInstructions($persona);
 
             // Get current mood for context injection
-            $currentMood = $relevantMemoryTags
-                ->where('category', 'current_mood')
-                ->where('target', 'self')
-                ->first();
-            $moodContext = $currentMood
-                ? "CURRENT STATE: You are currently feeling [{$currentMood->value}]. Let this emotion color your tone and responses.\n\n"
-                : "";
+            $moodContext = $this->getMoodContext($persona);
 
             // Construct the full prompt with media generation instructions and function calling
             $fullPrompt = <<<PROMPT
@@ -268,13 +267,7 @@ PROMPT;
     {
         try {
             // Get current mood from memory tags
-            $currentMood = $persona->memoryTags()
-                ->where('category', 'current_mood')
-                ->where('target', 'self')
-                ->first();
-            $moodContext = $currentMood
-                ? "CURRENT EMOTIONAL STATE: You are currently feeling [{$currentMood->value}]. This should naturally influence your tone and message style.\n\n"
-                : "";
+            $moodContext = $this->getMoodContext($persona);
 
             // Get recent chat history (last 5 messages)
             $recentMessages = $persona->messages()
@@ -657,11 +650,6 @@ PROMPT;
     }
 
     /**
-     * Store persona reference for image generation.
-     */
-    private ?Persona $currentPersona = null;
-
-    /**
      * Set current persona for image generation context.
      */
     public function setCurrentPersona(Persona $persona): void
@@ -700,6 +688,32 @@ PROMPT;
             '[Failed to generate voice note]',
             $textResponse
         );
+    }
+
+    /**
+     * Get current mood context with smart caching.
+     * Cache key includes updated_at timestamp to automatically refresh when mood changes.
+     */
+    private function getMoodContext(Persona $persona): string
+    {
+        $currentMood = $persona->memoryTags()
+            ->where('category', 'current_mood')
+            ->where('target', 'self')
+            ->first();
+
+        // Cache key includes updated_at to auto-refresh on changes
+        $cacheKey = $persona->id . '_' . ($currentMood?->updated_at?->timestamp ?? 'none');
+
+        if (isset($this->moodCache[$cacheKey])) {
+            return $this->moodCache[$cacheKey];
+        }
+
+        $context = $currentMood
+            ? "CURRENT STATE: You are currently feeling [{$currentMood->value}]. Let this emotion color your tone and responses.\n\n"
+            : "";
+
+        $this->moodCache[$cacheKey] = $context;
+        return $context;
     }
 
     /**
@@ -983,6 +997,59 @@ PROMPT;
     }
 
     /**
+     * Check if any keyword exists in text.
+     */
+    private function hasKeyword(string $text, array $keywords): bool
+    {
+        foreach ($keywords as $keyword) {
+            if (stripos($text, $keyword) !== false) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Remove keywords from text by filtering out sentences containing hair descriptions.
+     */
+    private function removeKeywords(string $text, array $keywords): string
+    {
+        // Split into sentences
+        $sentences = preg_split('/(?<=[.!?])\s+/', $text);
+        $kept = [];
+
+        foreach ($sentences as $sentence) {
+            // Check if sentence actually describes HAIR (not just contains color words for eyes)
+            $describesHair = false;
+
+            // Hair is described if we see patterns like:
+            // "hair is", "with [color] hair", "[style] hair", etc.
+            if (preg_match('/\b(?:hair|ponytail|braid|bun|bangs)\b/i', $sentence)) {
+                $describesHair = true;
+            }
+
+            if (!$describesHair) {
+                $kept[] = $sentence;
+            }
+        }
+
+        $result = implode(' ', $kept);
+        return $this->cleanupPunctuation($result);
+    }
+
+    /**
+     * Clean up punctuation and whitespace.
+     */
+    private function cleanupPunctuation(string $text): string
+    {
+        $text = preg_replace('/,\s*,/', ',', $text);
+        $text = preg_replace('/,\s*$/', '', $text);
+        $text = preg_replace('/^\s*,/', '', $text);
+        $text = preg_replace('/\s+/', ' ', $text);
+        return trim($text);
+    }
+
+    /**
      * Filter physical traits based on context.
      * Handles conflicts between static traits, dynamic updates, and outfit choices.
      */
@@ -1003,60 +1070,21 @@ PROMPT;
         $cleanedDynamic = $dynamicTraits;
 
         // STEP A: Check for head covering
-        $hasHeadCovering = false;
-        foreach ($coveringKeywords as $keyword) {
-            if (stripos($outfit, $keyword) !== false) {
-                $hasHeadCovering = true;
-                break;
-            }
-        }
-
-        if ($hasHeadCovering) {
+        if ($this->hasKeyword($outfit, $coveringKeywords)) {
             // Remove ALL hair descriptions from both static and dynamic traits
-            foreach ($hairKeywords as $hairWord) {
-                $cleanedStatic = preg_replace('/\b' . preg_quote($hairWord, '/') . '\b[^,.]*/i', '', $cleanedStatic);
-                $cleanedDynamic = preg_replace('/\b' . preg_quote($hairWord, '/') . '\b[^,.]*/i', '', $cleanedDynamic);
-            }
+            $cleanedStatic = $this->removeKeywords($cleanedStatic, $hairKeywords);
+            $cleanedDynamic = $this->removeKeywords($cleanedDynamic, $hairKeywords);
 
-            Log::info('GeminiBrainService: Head covering detected, removed hair descriptions', [
-                'original_static' => $staticTraits,
-                'original_dynamic' => $dynamicTraits,
-            ]);
+            Log::info('GeminiBrainService: Head covering detected, removed hair descriptions');
         } else {
             // STEP B: Handle hair evolution (dynamic overrides static)
-            $dynamicHasHair = false;
-            foreach ($hairKeywords as $hairWord) {
-                if (stripos($dynamicTraits, $hairWord) !== false) {
-                    $dynamicHasHair = true;
-                    break;
-                }
-            }
-
-            if ($dynamicHasHair) {
+            if ($this->hasKeyword($dynamicTraits, $hairKeywords)) {
                 // Remove hair descriptions from static traits (dynamic takes precedence)
-                foreach ($hairKeywords as $hairWord) {
-                    $cleanedStatic = preg_replace('/\b' . preg_quote($hairWord, '/') . '\b[^,.]*/i', '', $cleanedStatic);
-                }
+                $cleanedStatic = $this->removeKeywords($cleanedStatic, $hairKeywords);
 
-                Log::info('GeminiBrainService: Dynamic hair trait detected, overriding static', [
-                    'original_static' => $staticTraits,
-                    'dynamic' => $dynamicTraits,
-                ]);
+                Log::info('GeminiBrainService: Dynamic hair trait detected, overriding static');
             }
         }
-
-        // Clean up punctuation and whitespace
-        $cleanedStatic = preg_replace('/,\s*,/', ',', $cleanedStatic);
-        $cleanedStatic = preg_replace('/,\s*$/', '', $cleanedStatic);
-        $cleanedStatic = preg_replace('/^\s*,/', '', $cleanedStatic);
-        $cleanedStatic = preg_replace('/\s+/', ' ', $cleanedStatic);
-        $cleanedStatic = trim($cleanedStatic);
-
-        $cleanedDynamic = preg_replace('/,\s*,/', ',', $cleanedDynamic);
-        $cleanedDynamic = preg_replace('/,\s*$/', '', $cleanedDynamic);
-        $cleanedDynamic = preg_replace('/^\s*,/', '', $cleanedDynamic);
-        $cleanedDynamic = preg_replace('/\s+/', ' ', $cleanedDynamic);
-        $cleanedDynamic = trim($cleanedDynamic);
 
         // STEP C: Merge cleaned traits
         $merged = collect([$cleanedStatic, $cleanedDynamic])
@@ -1064,9 +1092,7 @@ PROMPT;
             ->implode(', ');
 
         // Final cleanup
-        $merged = preg_replace('/,\s*,/', ',', $merged);
-        $merged = preg_replace('/\s+/', ' ', $merged);
-        $merged = trim($merged);
+        $merged = $this->cleanupPunctuation($merged);
 
         Log::info('GeminiBrainService: Filtered traits for context', [
             'static' => $staticTraits,
@@ -1102,18 +1128,27 @@ PROMPT;
     }
 
     /**
-     * Get current outfit based on time of day.
+     * Get current outfit based on time of day with caching.
      */
     private function getCurrentOutfit(int $personaId): ?string
     {
+        $cacheKey = $personaId . '_' . now()->format('H');
+
+        if (isset($this->outfitCache[$cacheKey])) {
+            return $this->outfitCache[$cacheKey];
+        }
+
         $currentHour = now()->hour;
         $isNightTime = $currentHour >= self::NIGHT_TIME_START || $currentHour < self::NIGHT_TIME_END;
 
         $category = $isNightTime ? 'night_outfit' : 'daily_outfit';
 
-        return MemoryTag::where('persona_id', $personaId)
+        $outfit = MemoryTag::where('persona_id', $personaId)
             ->where('category', $category)
             ->value('value');
+
+        $this->outfitCache[$cacheKey] = $outfit;
+        return $outfit;
     }
 
     // (Cloudflare-specific methods removed; handled by drivers)
