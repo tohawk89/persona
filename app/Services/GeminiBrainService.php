@@ -300,10 +300,12 @@ It is time to execute this planned event:
 "{$event->context_prompt}"
 
 INSTRUCTIONS:
-- Generate a natural, contextually appropriate message based on the event instruction above
+- **Execute the Goal:** Write a message that achieves the event instruction naturally.
+- **Casual Tone:** Do NOT be overly verbose. Real people send short texts. Keep it under 2 sentences unless the topic requires depth.
+- **No Robot Intros:** Do NOT start with 'I just wanted to check in...' or 'I decided to message you because...' just say what you want to say.
+- **Fresh Start Rule:** If `RECENT CONVERSATION HISTORY` is empty or short, act as if you are initiating a new conversation. Don't reference non-existent previous chats.
+- **Variety:** Check the `RECENT CONVERSATION HISTORY`. If your last message started with 'Hey' or 'Hi', do NOT use that greeting again. Use a different opener or no greeting at all.
 - Take into account your CURRENT EMOTIONAL STATE and how it affects your communication
-- Reference the RECENT CONVERSATION HISTORY if relevant to make the message feel connected
-- DO NOT just copy the event instruction—interpret it and make it natural and engaging
 {$mediaInstructions}
 
 CRITICAL FORMATTING RULE:
