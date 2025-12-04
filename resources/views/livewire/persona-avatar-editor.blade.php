@@ -79,9 +79,25 @@
                                         <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                                             Current Reference Image
                                         </label>
-                                        <img src="{{ $persona->getFirstMediaUrl('reference_image') }}"
+                                        {{-- <img src="{{ $persona->getFirstMediaUrl('reference_image') }}"
                                              alt="Current Reference"
-                                             class="w-full rounded-lg shadow-md">
+                                             class="w-full rounded-lg shadow-md"> --}}
+                                        {{-- just link href --}}
+                                        <div class="flex items-center space-x-2">
+                                            <a href="{{ $persona->getFirstMediaUrl('reference_image') }}"
+                                               target="_blank"
+                                               class="text-blue-600 hover:text-blue-500 dark:text-blue-400 dark:hover:text-blue-300 underline"
+                                            >
+                                                View Current Reference Image
+                                            </a>
+                                            <button
+                                                wire:click="removeReferenceImage"
+                                                type="button"
+                                                class="text-sm text-red-600 hover:text-red-500 dark:text-red-400 dark:hover:text-red-300"
+                                            >
+                                                Remove
+                                            </button>
+                                        </div>
                                     </div>
                                 @endif
 
@@ -167,61 +183,38 @@
 
         <!-- Right Column: Preview Area -->
         <div>
-                        <div class="bg-gray-50 dark:bg-gray-900 rounded-lg p-6">
-                            <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">
-                                Current Passport Photo
-                            </h3>
+            <div class="bg-gray-50 dark:bg-gray-900 rounded-lg p-6">
+                <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">
+                    Current Passport Photo
+                </h3>
 
-                            @if($persona->hasMedia('avatar'))
-                                <div class="relative">
-                                    <img
-                                        src="{{ $persona->getFirstMediaUrl('avatar') }}"
-                                        alt="{{ $persona->name }} Avatar"
-                                        class="w-full rounded-lg shadow-lg"
-                                        wire:key="avatar-{{ $persona->getFirstMedia('avatar')->id ?? 'none' }}"
-                                    >
-                                    <div class="mt-4 text-center">
-                                        <p class="text-sm text-gray-600 dark:text-gray-400">
-                                            Last updated: {{ $persona->getFirstMedia('avatar')->created_at->diffForHumans() }}
-                                        </p>
-                                    </div>
-                                </div>
-                            @else
-                                <div class="flex flex-col items-center justify-center h-96 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg">
-                                    <svg class="h-16 w-16 text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                                    </svg>
-                                    <p class="text-sm text-gray-500 dark:text-gray-400 text-center">
-                                        No passport photo yet<br>
-                                        Upload or generate one to get started
-                                    </p>
-                                </div>
-                            @endif
+                @if($persona->hasMedia('avatar'))
+                    <div class="relative">
+                        <img
+                            src="{{ $persona->getFirstMediaUrl('avatar') }}"
+                            alt="{{ $persona->name }} Avatar"
+                            class="w-full rounded-lg shadow-lg"
+                            wire:key="avatar-{{ $persona->getFirstMedia('avatar')->id ?? 'none' }}"
+                        >
+                        <div class="mt-4 text-center">
+                            <p class="text-sm text-gray-600 dark:text-gray-400">
+                                Last updated: {{ $persona->getFirstMedia('avatar')->created_at->diffForHumans() }}
+                            </p>
                         </div>
+                    </div>
+                @else
+                    <div class="flex flex-col items-center justify-center h-96 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg">
+                        <svg class="h-16 w-16 text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                        </svg>
+                        <p class="text-sm text-gray-500 dark:text-gray-400 text-center">
+                            No passport photo yet<br>
+                            Upload or generate one to get started
+                        </p>
+                    </div>
+                @endif
+            </div>
 
-                        <!-- Info Box -->
-                        <div class="mt-6 bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
-                            <div class="flex">
-                                <div class="flex-shrink-0">
-                                    <svg class="h-5 w-5 text-blue-400" viewBox="0 0 20 20" fill="currentColor">
-                                        <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd" />
-                                    </svg>
-                                </div>
-                                <div class="ml-3">
-                                    <h3 class="text-sm font-medium text-blue-800 dark:text-blue-200">
-                                        Passport Photo Guidelines
-                                    </h3>
-                                    <div class="mt-2 text-sm text-blue-700 dark:text-blue-300">
-                                        <ul class="list-disc list-inside space-y-1">
-                                            <li>Neutral expression, facing camera</li>
-                                            <li>Plain off-white background</li>
-                                            <li>Even lighting, no shadows</li>
-                                            <li>Professional headshot style</li>
-                                        </ul>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
         </div>
     </div>
 

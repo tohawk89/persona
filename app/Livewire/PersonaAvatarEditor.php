@@ -19,7 +19,9 @@ class PersonaAvatarEditor extends Component
     public $photo = null;
     public bool $isProcessing = false;
 
-    private const PASSPORT_PROMPT = 'Professional passport photograph headshot, neutral expression, plain off-white background, even studio lighting, sharp focus, photorealistic.';
+    // private const PASSPORT_PROMPT = 'Professional passport photograph headshot, neutral expression, plain off-white background, even studio lighting, sharp focus, photorealistic.';
+
+    private const PASSPORT_PROMPT = 'A photorealistic passport photo. Front-facing view, looking directly at the camera. Neutral expression, symmetrical composition. Plain solid white background. Even, flat studio lighting. Head and shoulders shot. High resolution, 8k.';
 
     protected $rules = [
         'photo' => 'nullable|image|max:10240', // 10MB max
