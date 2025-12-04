@@ -134,14 +134,24 @@ Business logic lives in **services**, not controllers. All core services are reg
 ## 🎨 Image Generation System
 
 ### Multi-Driver Architecture
-**ImageGeneratorInterface** with two drivers:
+**ImageGeneratorInterface** with three drivers:
 
-#### KieAiDriver (Primary - Default)
+#### KieAiTextToImageDriver (Primary - Default)
 - **Model**: `bytedance/seedream-v4-text-to-image`
 - **Speed**: ~30 seconds
 - **Quality**: High-quality, realistic
 - **API**: https://api.kie.ai
 - **Method**: Submit task → Poll for completion → Download
+- **Use Case**: Generate images from text prompts only
+
+#### KieAiEditDriver (Image-to-Image)
+- **Model**: `bytedance/seedream-v4-edit`
+- **Speed**: ~30 seconds
+- **Quality**: High-quality, consistent with reference images
+- **API**: https://api.kie.ai
+- **Method**: Submit task with reference images → Poll → Download
+- **Use Case**: Generate images based on reference images + text prompt
+- **Reference Images**: Up to 10 images from persona's `reference_images` media collection
 
 #### CloudflareFluxDriver (Fallback)
 - **Model**: `@cf/black-forest-labs/flux-1-schnell`
@@ -425,7 +435,8 @@ app/
     ├── ImageGeneratorManager.php
     ├── ImageGenerators/
     │   ├── CloudflareFluxDriver.php
-    │   └── KieAiDriver.php ← Default driver
+    │   ├── KieAiTextToImageDriver.php ← Text-to-image (default)
+    │   └── KieAiEditDriver.php ← Image-to-image with references
     ├── SmartQueueService.php
     └── TelegramService.php
 ```

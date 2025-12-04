@@ -8,7 +8,7 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
-class KieAiDriver implements ImageGeneratorInterface
+class KieAiTextToImageDriver implements ImageGeneratorInterface
 {
     private const API_BASE_URL = 'https://api.kie.ai';
     private const CREATE_TASK_ENDPOINT = '/api/v1/jobs/createTask';
@@ -28,11 +28,11 @@ class KieAiDriver implements ImageGeneratorInterface
         $apiKey = $this->apiKey ?? config('services.image_generator.drivers.kie_ai.api_key');
 
         if (!$apiKey) {
-            Log::error('KieAiDriver: Missing API key');
+            Log::error('KieAiTextToImageDriver: Missing API key');
             return '';
         }
 
-        Log::info('KieAiDriver: Generating image', [
+        Log::info('KieAiTextToImageDriver: Generating image', [
             'persona_id' => $persona->id,
             'prompt_length' => strlen($prompt),
         ]);
@@ -73,7 +73,7 @@ class KieAiDriver implements ImageGeneratorInterface
                     ]);
 
                 if (!$response->successful()) {
-                    Log::error('KieAiDriver: Task submission failed', [
+                    Log::error('KieAiTextToImageDriver: Task submission failed', [
                         'status' => $response->status(),
                         'body' => $response->body(),
                         'attempt' => $attempt,
@@ -90,7 +90,7 @@ class KieAiDriver implements ImageGeneratorInterface
                 $data = $response->json();
 
                 if (($data['code'] ?? null) !== 200) {
-                    Log::error('KieAiDriver: Task submission returned error', [
+                    Log::error('KieAiTextToImageDriver: Task submission returned error', [
                         'response' => $data,
                         'attempt' => $attempt,
                     ]);
@@ -106,15 +106,15 @@ class KieAiDriver implements ImageGeneratorInterface
                 $taskId = $data['data']['taskId'] ?? null;
 
                 if (!$taskId) {
-                    Log::error('KieAiDriver: No taskId in response', ['response' => $data]);
+                    Log::error('KieAiTextToImageDriver: No taskId in response', ['response' => $data]);
                     return null;
                 }
 
-                Log::info('KieAiDriver: Task submitted successfully', ['taskId' => $taskId]);
+                Log::info('KieAiTextToImageDriver: Task submitted successfully', ['taskId' => $taskId]);
                 return $taskId;
 
             } catch (\Exception $e) {
-                Log::error('KieAiDriver: Task submission exception', [
+                Log::error('KieAiTextToImageDriver: Task submission exception', [
                     'error' => $e->getMessage(),
                     'attempt' => $attempt,
                 ]);
@@ -146,7 +146,7 @@ class KieAiDriver implements ImageGeneratorInterface
                     ]);
 
                 if (!$response->successful()) {
-                    Log::warning('KieAiDriver: Status check failed', [
+                    Log::warning('KieAiTextToImageDriver: Status check failed', [
                         'status' => $response->status(),
                         'taskId' => $taskId,
                     ]);
@@ -157,7 +157,7 @@ class KieAiDriver implements ImageGeneratorInterface
                 $data = $response->json();
 
                 if (($data['code'] ?? null) !== 200) {
-                    Log::warning('KieAiDriver: Status response error', ['response' => $data]);
+                    Log::warning('KieAiTextToImageDriver: Status response error', ['response' => $data]);
                     sleep(self::POLL_INTERVAL);
                     continue;
                 }
@@ -172,11 +172,11 @@ class KieAiDriver implements ImageGeneratorInterface
                     $imageUrls = $resultJson['resultUrls'] ?? [];
 
                     if (empty($imageUrls)) {
-                        Log::error('KieAiDriver: No images in completed task', ['taskData' => $taskData]);
+                        Log::error('KieAiTextToImageDriver: No images in completed task', ['taskData' => $taskData]);
                         return null;
                     }
 
-                    Log::info('KieAiDriver: Generation completed', [
+                    Log::info('KieAiTextToImageDriver: Generation completed', [
                         'taskId' => $taskId,
                         'imageUrl' => $imageUrls[0],
                         'elapsed' => time() - $startTime,
@@ -187,7 +187,7 @@ class KieAiDriver implements ImageGeneratorInterface
                 }
 
                 if ($state === 'fail') {
-                    Log::error('KieAiDriver: Generation failed', [
+                    Log::error('KieAiTextToImageDriver: Generation failed', [
                         'taskId' => $taskId,
                         'failCode' => $taskData['failCode'] ?? null,
                         'failMsg' => $taskData['failMsg'] ?? 'Unknown error',
@@ -196,7 +196,7 @@ class KieAiDriver implements ImageGeneratorInterface
                 }
 
                 // Still waiting
-                Log::info('KieAiDriver: Generation in progress', [
+                Log::info('KieAiTextToImageDriver: Generation in progress', [
                     'taskId' => $taskId,
                     'state' => $state,
                 ]);
@@ -204,7 +204,7 @@ class KieAiDriver implements ImageGeneratorInterface
                 sleep(self::POLL_INTERVAL);
 
             } catch (\Exception $e) {
-                Log::warning('KieAiDriver: Polling exception', [
+                Log::warning('KieAiTextToImageDriver: Polling exception', [
                     'taskId' => $taskId,
                     'error' => $e->getMessage(),
                 ]);
@@ -212,7 +212,7 @@ class KieAiDriver implements ImageGeneratorInterface
             }
         }
 
-        Log::error('KieAiDriver: Polling timeout', [
+        Log::error('KieAiTextToImageDriver: Polling timeout', [
             'taskId' => $taskId,
             'maxTime' => self::MAX_POLL_TIME,
         ]);
@@ -227,7 +227,7 @@ class KieAiDriver implements ImageGeneratorInterface
             $imageData = Http::timeout(30)->get($imageUrl)->body();
 
             if (empty($imageData)) {
-                Log::error('KieAiDriver: Failed to download image', ['url' => $imageUrl]);
+                Log::error('KieAiTextToImageDriver: Failed to download image', ['url' => $imageUrl]);
                 return '';
             }
 
@@ -244,7 +244,7 @@ class KieAiDriver implements ImageGeneratorInterface
 
                 $url = $media->getUrl();
 
-                Log::info('KieAiDriver: Image saved via MediaLibrary', [
+                Log::info('KieAiTextToImageDriver: Image saved via MediaLibrary', [
                     'filename' => $filename,
                     'url' => $url,
                     'media_id' => $media->id,
@@ -257,7 +257,7 @@ class KieAiDriver implements ImageGeneratorInterface
             }
 
         } catch (\Exception $e) {
-            Log::error('KieAiDriver: Failed to save image', [
+            Log::error('KieAiTextToImageDriver: Failed to save image', [
                 'error' => $e->getMessage(),
                 'url' => $imageUrl,
             ]);
