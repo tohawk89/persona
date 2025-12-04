@@ -19,14 +19,32 @@ class TelegramService
     }
 
     /**
+     * Get the bot token to use (custom or default).
+     */
+    private function getToken(?string $customToken): string
+    {
+        return $customToken ?? $this->botToken;
+    }
+
+    /**
+     * Get the API URL for a specific token.
+     */
+    private function getApiUrl(?string $customToken): string
+    {
+        $token = $this->getToken($customToken);
+        return "https://api.telegram.org/bot{$token}";
+    }
+
+    /**
      * Send a text message to a Telegram chat.
      *
      * @param string|int $chatId
      * @param string $message
+     * @param string|null $botToken Optional custom bot token
      * @param array $options Additional options (parse_mode, reply_markup, etc.)
      * @return bool Success status
      */
-    public function sendMessage(string|int $chatId, string $message, array $options = []): bool
+    public function sendMessage(string|int $chatId, string $message, ?string $botToken = null, array $options = []): bool
     {
         try {
             $params = array_merge([
@@ -35,15 +53,21 @@ class TelegramService
                 'parse_mode' => 'HTML',
             ], $options);
 
-            Telegram::sendMessage($params);
+            $apiUrl = $this->getApiUrl($botToken);
+            $response = Http::post("{$apiUrl}/sendMessage", $params);
+
+            if (!$response->successful()) {
+                throw new \Exception($response->json()['description'] ?? 'Unknown error');
+            }
 
             Log::info('TelegramService: Message sent', [
                 'chat_id' => $chatId,
                 'message_length' => strlen($message),
+                'using_custom_token' => $botToken !== null,
             ]);
 
             return true;
-        } catch (TelegramSDKException $e) {
+        } catch (\Exception $e) {
             Log::error('TelegramService: Failed to send message', [
                 'chat_id' => $chatId,
                 'error' => $e->getMessage(),
@@ -59,9 +83,10 @@ class TelegramService
      *
      * @param string|int $chatId
      * @param string $message
+     * @param string|null $botToken Optional custom bot token
      * @return bool Success status
      */
-    public function sendStreamingMessage(string|int $chatId, string $message): bool
+    public function sendStreamingMessage(string|int $chatId, string $message, ?string $botToken = null): bool
     {
         try {
             // Process special tags before sending
@@ -82,7 +107,7 @@ class TelegramService
                 }
 
                 // Send typing action before each message
-                $this->sendChatAction($chatId, 'typing');
+                $this->sendChatAction($chatId, 'typing', $botToken);
                 sleep(1); // Typing delay
 
                 // Check if part contains [IMAGE:] tag
@@ -93,13 +118,13 @@ class TelegramService
 
                     // Send as photo
                     if (!empty($caption)) {
-                        $this->sendPhoto($chatId, $imageUrl, $caption);
+                        $this->sendPhoto($chatId, $imageUrl, $caption, $botToken);
                     } else {
-                        $this->sendPhoto($chatId, $imageUrl);
+                        $this->sendPhoto($chatId, $imageUrl, null, $botToken);
                     }
                 } else {
                     // Send as text message
-                    $this->sendMessage($chatId, $part);
+                    $this->sendMessage($chatId, $part, $botToken);
                 }
 
                 // Small delay between messages
@@ -143,10 +168,11 @@ class TelegramService
      * @param string|int $chatId
      * @param string $photo URL or file_id
      * @param string|null $caption
+     * @param string|null $botToken Optional custom bot token
      * @param array $options Additional options
      * @return bool Success status
      */
-    public function sendPhoto(string|int $chatId, string $photo, ?string $caption = null, array $options = []): bool
+    public function sendPhoto(string|int $chatId, string $photo, ?string $caption = null, ?string $botToken = null, array $options = []): bool
     {
         try {
             // Convert URL to local file path for Telegram upload
@@ -218,10 +244,11 @@ class TelegramService
      *
      * @param string|int $chatId
      * @param string $voice URL or file_id of the voice file
+     * @param string|null $botToken Optional custom bot token
      * @param array $options Additional Telegram API options
      * @return bool Success status
      */
-    public function sendVoice(string|int $chatId, string $voice, array $options = []): bool
+    public function sendVoice(string|int $chatId, string $voice, ?string $botToken = null, array $options = []): bool
     {
         try {
             // Convert URL to local file path for Telegram upload (same logic as sendPhoto)
@@ -290,16 +317,21 @@ class TelegramService
      * @param string $action (typing, upload_photo, record_video, etc.)
      * @return bool Success status
      */
-    public function sendChatAction(string|int $chatId, string $action = 'typing'): bool
+    public function sendChatAction(string|int $chatId, string $action = 'typing', ?string $botToken = null): bool
     {
         try {
-            Telegram::sendChatAction([
+            $apiUrl = $this->getApiUrl($botToken);
+            $response = Http::post("{$apiUrl}/sendChatAction", [
                 'chat_id' => $chatId,
                 'action' => $action,
             ]);
 
+            if (!$response->successful()) {
+                throw new \Exception($response->json()['description'] ?? 'Unknown error');
+            }
+
             return true;
-        } catch (TelegramSDKException $e) {
+        } catch (\Exception $e) {
             Log::error('TelegramService: Failed to send chat action', [
                 'chat_id' => $chatId,
                 'action' => $action,

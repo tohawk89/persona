@@ -3,11 +3,13 @@
 namespace App\Livewire;
 
 use Livewire\Component;
+use App\Models\Persona;
 use App\Models\MemoryTag;
 use Illuminate\Support\Facades\Auth;
 
 class MemoryBrain extends Component
 {
+    public Persona $persona;
     public $showModal = false;
     public $editingId = null;
     public $category;
@@ -21,6 +23,16 @@ class MemoryBrain extends Component
         'value' => 'required|string|max:255',
         'context' => 'nullable|string',
     ];
+
+    public function mount(Persona $persona)
+    {
+        // Authorization: Ensure user owns this persona
+        if ($persona->user_id !== auth()->id()) {
+            abort(403, 'Unauthorized access to persona.');
+        }
+
+        $this->persona = $persona;
+    }
 
     public function openModal($id = null)
     {
@@ -47,7 +59,7 @@ class MemoryBrain extends Component
     {
         $this->validate();
 
-        $persona = Auth::user()->persona;
+        $persona = $this->persona;
 
         if (!$persona) {
             session()->flash('error', 'Please configure a persona first.');
@@ -90,11 +102,10 @@ class MemoryBrain extends Component
 
     public function render()
     {
-        $persona = Auth::user()->persona;
-        $memories = $persona ? $persona->memoryTags()->latest()->get() : collect();
+        $memories = $this->persona->memoryTags()->latest()->get();
 
         return view('livewire.memory-brain', [
             'memories' => $memories,
-        ])->layout('layouts.app');
+        ])->layout('layouts.persona', ['persona' => $this->persona]);
     }
 }

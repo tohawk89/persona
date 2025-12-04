@@ -13,7 +13,7 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware): void {
         // Exclude Telegram webhook from CSRF verification
         $middleware->validateCsrfTokens(except: [
-            'telegram/webhook',
+            'telegram/webhook/*',
             'api/telegram/webhook',
         ]);
     })

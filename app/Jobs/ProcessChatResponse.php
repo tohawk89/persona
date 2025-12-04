@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
@@ -11,7 +12,7 @@ use Illuminate\Support\Facades\Log;
 use App\Models\{User, Message};
 use App\Facades\{GeminiBrain, Telegram};
 
-class ProcessChatResponse implements ShouldQueue
+class ProcessChatResponse implements ShouldQueue, ShouldBeUnique
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
@@ -26,14 +27,28 @@ class ProcessChatResponse implements ShouldQueue
     public $backoff = [5, 15, 30];
 
     /**
+     * The unique ID of the job.
+     * This ensures only one job per user/persona combination runs at a time.
+     */
+    public function uniqueId(): string
+    {
+        $personaId = $this->persona?->id ?? 'default';
+        return "process_chat_{$this->user->id}_{$personaId}";
+    }
+
+    /**
      * Create a new job instance.
      *
      * @param User $user The user to process chat for
      * @param string|null $imagePath Optional image path (bypasses buffering)
+     * @param \App\Models\Persona|null $persona Specific persona for this chat
+     * @param string|null $botToken Optional custom bot token
      */
     public function __construct(
         public User $user,
-        public ?string $imagePath = null
+        public ?string $imagePath = null,
+        public ?\App\Models\Persona $persona = null,
+        public ?string $botToken = null
     ) {}
 
     /**
@@ -42,17 +57,18 @@ class ProcessChatResponse implements ShouldQueue
     public function handle(): void
     {
         try {
-            $persona = $this->user->persona;
+            // Use provided persona or fall back to user's default persona
+            $persona = $this->persona ?? $this->user->persona;
 
             if (!$persona) {
-                Log::warning('ProcessChatResponse: User has no persona', [
+                Log::warning('ProcessChatResponse: No persona available', [
                     'user_id' => $this->user->id,
                 ]);
                 return;
             }
 
             // STEP 1: Atomic Lock (Prevent concurrent processing)
-            $lockKey = "processing_chat_{$this->user->id}";
+            $lockKey = "processing_chat_{$this->user->id}_{$persona->id}";
             $lock = \Illuminate\Support\Facades\Cache::lock($lockKey, 10);
 
             if (!$lock->get()) {
@@ -71,7 +87,7 @@ class ProcessChatResponse implements ShouldQueue
                     $aggregatedText = null; // Will use latest message
                 } else {
                     // Text message: fetch from buffer
-                    $bufferKey = "chat_buffer_{$this->user->telegram_chat_id}";
+                    $bufferKey = "chat_buffer_{$this->user->telegram_chat_id}_{$persona->id}";
                     $aggregatedText = \Illuminate\Support\Facades\Cache::pull($bufferKey);
 
                     if (empty($aggregatedText)) {
@@ -90,7 +106,7 @@ class ProcessChatResponse implements ShouldQueue
                 }
 
                 // Send typing indicator
-                Telegram::sendChatAction($this->user->telegram_chat_id, 'typing');
+                Telegram::sendChatAction($this->user->telegram_chat_id, 'typing', $this->botToken);
 
                 // STEP 3: Get chat history (last 20 messages excluding the current buffer)
                 $chatHistory = Message::where('user_id', $this->user->id)
@@ -228,7 +244,7 @@ class ProcessChatResponse implements ShouldQueue
             $imageUrl = trim($imageMatch[1]);
 
             // Send "Uploading Photo" action
-            Telegram::sendChatAction($this->user->telegram_chat_id, 'upload_photo');
+            Telegram::sendChatAction($this->user->telegram_chat_id, 'upload_photo', $this->botToken);
 
             // Clean caption: remove <SPLIT> tags (they're for text messages only)
             $cleanCaption = $textPart ? str_replace(['<SPLIT>', '<split>'], '', $textPart) : null;
@@ -237,7 +253,8 @@ class ProcessChatResponse implements ShouldQueue
             Telegram::sendPhoto(
                 $this->user->telegram_chat_id,
                 $imageUrl,
-                $cleanCaption
+                $cleanCaption,
+                $this->botToken
             );
 
             // CRITICAL: Save bot message with image to DB
@@ -255,9 +272,9 @@ class ProcessChatResponse implements ShouldQueue
             $audioUrl = trim($audioMatch[1]);
 
             // Send "Record Voice" action
-            Telegram::sendChatAction($this->user->telegram_chat_id, 'record_voice');
+            Telegram::sendChatAction($this->user->telegram_chat_id, 'record_voice', $this->botToken);
 
-            Telegram::sendVoice($this->user->telegram_chat_id, $audioUrl);
+            Telegram::sendVoice($this->user->telegram_chat_id, $audioUrl, $this->botToken);
 
             // CRITICAL: Save bot message with voice to DB
             Message::create([
@@ -282,7 +299,7 @@ class ProcessChatResponse implements ShouldQueue
                 }
 
                 // Send typing indicator before each message
-                Telegram::sendChatAction($this->user->telegram_chat_id, 'typing');
+                Telegram::sendChatAction($this->user->telegram_chat_id, 'typing', $this->botToken);
 
                 // Calculate human-like delay based on message length
                 // Formula: 0.05 seconds per character, capped between 1-4 seconds
@@ -290,7 +307,7 @@ class ProcessChatResponse implements ShouldQueue
                 sleep((int) $delay);
 
                 // Send the message part
-                Telegram::sendMessage($this->user->telegram_chat_id, $part);
+                Telegram::sendMessage($this->user->telegram_chat_id, $part, $this->botToken);
 
                 // CRITICAL: Save each part to DB for context continuity
                 Message::create([
@@ -319,11 +336,11 @@ class ProcessChatResponse implements ShouldQueue
                     continue;
                 }
 
-                Telegram::sendChatAction($this->user->telegram_chat_id, 'typing');
+                Telegram::sendChatAction($this->user->telegram_chat_id, 'typing', $this->botToken);
                 $delay = min(max(strlen($part) * 0.05, 1), 4);
                 sleep((int) $delay);
 
-                Telegram::sendMessage($this->user->telegram_chat_id, $part);
+                Telegram::sendMessage($this->user->telegram_chat_id, $part, $this->botToken);
 
                 Message::create([
                     'user_id' => $this->user->id,

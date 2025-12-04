@@ -24,6 +24,8 @@ class Persona extends Model implements HasMedia
         'voice_frequency',
         'image_frequency',
         'is_active',
+        'telegram_bot_token',
+        'telegram_bot_username',
     ];
 
     protected $casts = [

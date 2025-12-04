@@ -3,12 +3,25 @@
 namespace App\Livewire;
 
 use Livewire\Component;
+use App\Models\Persona;
 use App\Models\EventSchedule;
 use Illuminate\Support\Facades\Auth;
 use Carbon\Carbon;
 
 class ScheduleTimeline extends Component
 {
+    public Persona $persona;
+
+    public function mount(Persona $persona)
+    {
+        // Authorization: Ensure user owns this persona
+        if ($persona->user_id !== auth()->id()) {
+            abort(403, 'Unauthorized access to persona.');
+        }
+
+        $this->persona = $persona;
+    }
+
     public function sendNow($id)
     {
         $event = EventSchedule::findOrFail($id);
@@ -38,22 +51,18 @@ class ScheduleTimeline extends Component
             'trigger_event_time' => $event->scheduled_at->format('Y-m-d H:i:s'),
         ]);
 
-        return redirect()->route('test.chat');
+        return redirect()->route('persona.test', $this->persona);
     }
 
     public function render()
     {
-        $persona = Auth::user()->persona;
-
-        $events = $persona
-            ? EventSchedule::where('persona_id', $persona->id)
-                ->whereDate('scheduled_at', '>=', Carbon::today())
-                ->orderBy('scheduled_at', 'asc')
-                ->get()
-            : collect();
+        $events = EventSchedule::where('persona_id', $this->persona->id)
+            ->whereDate('scheduled_at', '>=', Carbon::today())
+            ->orderBy('scheduled_at', 'asc')
+            ->get();
 
         return view('livewire.schedule-timeline', [
             'events' => $events,
-        ])->layout('layouts.app');
+        ])->layout('layouts.persona', ['persona' => $this->persona]);
     }
 }

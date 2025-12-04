@@ -14,10 +14,10 @@ class TelegramWebhookController extends Controller
     /**
      * Handle incoming Telegram webhook updates.
      *
-     * SECURITY: Only processes messages from TELEGRAM_ADMIN_ID.
+     * MULTI-BOT SUPPORT: Routes messages to specific persona based on bot token.
      * UX: Sends immediate typing indicator to prevent "ghost" silence.
      */
-    public function webhook(Request $request): JsonResponse
+    public function webhook(Request $request, string $token): JsonResponse
     {
         // STEP 1: Secret Validation (CRITICAL SECURITY) - Outside try-catch to allow abort
         $webhookSecret = env('TELEGRAM_WEBHOOK_SECRET');
@@ -30,8 +30,35 @@ class TelegramWebhookController extends Controller
         }
 
         try {
+            // STEP 2: Resolve Persona from Token
+            $persona = null;
+            $botToken = null;
 
-            // STEP 2: Parse Update
+            // Check 1: Dedicated Bot (Persona-specific token)
+            $persona = \App\Models\Persona::where('telegram_bot_token', $token)->first();
+
+            if ($persona) {
+                $botToken = $persona->telegram_bot_token;
+                Log::info('TelegramWebhookController: Using dedicated bot', [
+                    'persona_id' => $persona->id,
+                    'persona_name' => $persona->name,
+                ]);
+            } else {
+                // Check 2: System Default Bot
+                $systemToken = config('services.telegram.bot_token');
+
+                if ($token === $systemToken) {
+                    $botToken = $systemToken;
+                    Log::info('TelegramWebhookController: Using system default bot');
+                } else {
+                    Log::warning('TelegramWebhookController: Unknown bot token', [
+                        'token' => substr($token, 0, 10) . '...',
+                    ]);
+                    return response()->json(['status' => 'ignored', 'reason' => 'Unknown bot token']);
+                }
+            }
+
+            // STEP 3: Parse Update
             $payload = $request->all();
             $data = Telegram::parseUpdate($payload);
             $message = $payload['message'] ?? null;
@@ -117,7 +144,7 @@ class TelegramWebhookController extends Controller
                 return response()->json(['status' => 'ignored', 'reason' => 'Unauthorized user']);
             }
 
-            // STEP 4: User Resolution
+            // STEP 5: User Resolution
             $user = User::where('telegram_chat_id', $chatId)->first();
 
             if (!$user) {
@@ -135,13 +162,29 @@ class TelegramWebhookController extends Controller
                 ]);
             }
 
-            // STEP 5: UX Indicator (CRITICAL - Prevent "Ghost" silence)
-            Telegram::sendChatAction($chatId, 'typing');
+            // STEP 6: Final Persona Resolution (for System Bot)
+            if (!$persona) {
+                // System bot: find user's active persona
+                $persona = $user->personas()->where('is_active', true)->first();
 
-            // STEP 6: Save User Message (for raw logs)
+                if (!$persona) {
+                    Log::warning('TelegramWebhookController: No active persona found for user', [
+                        'user_id' => $user->id,
+                        'chat_id' => $chatId,
+                    ]);
+
+                    Telegram::sendMessage($chatId, 'Please create and activate a persona first via the dashboard.', $botToken);
+                    return response()->json(['status' => 'ignored', 'reason' => 'No active persona']);
+                }
+            }
+
+            // STEP 7: UX Indicator (CRITICAL - Prevent "Ghost" silence)
+            Telegram::sendChatAction($chatId, 'typing', $botToken);
+
+            // STEP 8: Save User Message (for raw logs)
             $userMessage = Message::create([
                 'user_id' => $user->id,
-                'persona_id' => $user->persona?->id,
+                'persona_id' => $persona->id,
                 'sender_type' => 'user',
                 'content' => $text,
                 'image_path' => $imagePath, // Store image path if present
@@ -150,13 +193,13 @@ class TelegramWebhookController extends Controller
             // Update last interaction timestamp
             $user->update(['last_interaction_at' => now()]);
 
-            // STEP 7: Buffer Management (Debounce Pattern)
+            // STEP 9: Buffer Management (Debounce Pattern)
             if ($imagePath) {
                 // Images bypass buffering (process immediately)
-                ProcessChatResponse::dispatch($user, $imagePath)->delay(now()->addSeconds(2));
+                ProcessChatResponse::dispatch($user, $imagePath, $persona, $botToken)->delay(now()->addSeconds(2));
             } else {
                 // Text messages: Append to buffer
-                $bufferKey = "chat_buffer_{$chatId}";
+                $bufferKey = "chat_buffer_{$chatId}_{$persona->id}";
                 $existingBuffer = \Illuminate\Support\Facades\Cache::get($bufferKey, '');
 
                 $newBuffer = $existingBuffer
@@ -167,11 +210,12 @@ class TelegramWebhookController extends Controller
 
                 Log::info('TelegramWebhookController: Message buffered', [
                     'chat_id' => $chatId,
+                    'persona_id' => $persona->id,
                     'buffer_length' => strlen($newBuffer),
                 ]);
 
-                // Dispatch delayed job (10 seconds debounce)
-                ProcessChatResponse::dispatch($user, null)->delay(now()->addSeconds(10));
+                // Dispatch delayed job (10 seconds debounce) with persona and bot token
+                ProcessChatResponse::dispatch($user, null, $persona, $botToken)->delay(now()->addSeconds(10));
             }
 
             // Dispatch background job to extract memories (every 10th message)

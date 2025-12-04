@@ -3,6 +3,7 @@
 namespace App\Livewire;
 
 use Livewire\Component;
+use App\Models\Persona;
 use App\Services\GeminiBrainService;
 use Illuminate\Support\Facades\Auth;
 
@@ -18,14 +19,14 @@ class TestChat extends Component
         'inputMessage' => 'required|string|min:1|max:1000',
     ];
 
-    public function mount()
+    public function mount(Persona $persona)
     {
-        $this->persona = Auth::user()->persona;
-
-        if (!$this->persona) {
-            session()->flash('error', 'Please create a persona first.');
-            return redirect()->route('persona.manager');
+        // Authorization: Ensure user owns this persona
+        if ($persona->user_id !== auth()->id()) {
+            abort(403, 'Unauthorized access to persona.');
         }
+
+        $this->persona = $persona;
 
         // Check if there's a triggered event from schedule
         if (session()->has('trigger_event_id')) {
@@ -145,6 +146,6 @@ class TestChat extends Component
 
     public function render()
     {
-        return view('livewire.test-chat')->layout('layouts.app');
+        return view('livewire.test-chat')->layout('layouts.persona', ['persona' => $this->persona]);
     }
 }

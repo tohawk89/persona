@@ -33,20 +33,8 @@ new class extends Component
                     <x-nav-link :href="route('dashboard')" :active="request()->routeIs('dashboard')" wire:navigate>
                         {{ __('Dashboard') }}
                     </x-nav-link>
-                    <x-nav-link :href="route('persona.manager')" :active="request()->routeIs('persona.manager')" wire:navigate>
-                        {{ __('Persona') }}
-                    </x-nav-link>
-                    <x-nav-link :href="route('memory.brain')" :active="request()->routeIs('memory.brain')" wire:navigate>
-                        {{ __('Memory') }}
-                    </x-nav-link>
-                    <x-nav-link :href="route('schedule.timeline')" :active="request()->routeIs('schedule.timeline')" wire:navigate>
-                        {{ __('Schedule') }}
-                    </x-nav-link>
-                    <x-nav-link :href="route('chat.logs')" :active="request()->routeIs('chat.logs')" wire:navigate>
-                        {{ __('Chat Logs') }}
-                    </x-nav-link>
-                    <x-nav-link :href="route('test.chat')" :active="request()->routeIs('test.chat')" wire:navigate>
-                        {{ __('Test Chat') }}
+                    <x-nav-link :href="route('personas.index')" :active="request()->routeIs('personas.*') || request()->routeIs('persona.*')" wire:navigate>
+                        {{ __('My Personas') }}
                     </x-nav-link>
                 </div>
             </div>
@@ -99,20 +87,8 @@ new class extends Component
             <x-responsive-nav-link :href="route('dashboard')" :active="request()->routeIs('dashboard')" wire:navigate>
                 {{ __('Dashboard') }}
             </x-responsive-nav-link>
-            <x-responsive-nav-link :href="route('persona.manager')" :active="request()->routeIs('persona.manager')" wire:navigate>
-                {{ __('Persona') }}
-            </x-responsive-nav-link>
-            <x-responsive-nav-link :href="route('memory.brain')" :active="request()->routeIs('memory.brain')" wire:navigate>
-                {{ __('Memory') }}
-            </x-responsive-nav-link>
-            <x-responsive-nav-link :href="route('schedule.timeline')" :active="request()->routeIs('schedule.timeline')" wire:navigate>
-                {{ __('Schedule') }}
-            </x-responsive-nav-link>
-            <x-responsive-nav-link :href="route('chat.logs')" :active="request()->routeIs('chat.logs')" wire:navigate>
-                {{ __('Chat Logs') }}
-            </x-responsive-nav-link>
-            <x-responsive-nav-link :href="route('test.chat')" :active="request()->routeIs('test.chat')" wire:navigate>
-                {{ __('Test Chat') }}
+            <x-responsive-nav-link :href="route('personas.index')" :active="request()->routeIs('personas.*') || request()->routeIs('persona.*')" wire:navigate>
+                {{ __('My Personas') }}
             </x-responsive-nav-link>
         </div>
 

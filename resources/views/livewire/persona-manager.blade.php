@@ -342,6 +342,65 @@
                         @error('new_photos.*') <span class="text-red-500 text-sm mt-2 block">{{ $message }}</span> @enderror
                     </div>
 
+                    <!-- Telegram Bot Configuration -->
+                    <div class="border border-gray-300 dark:border-gray-600 rounded-lg p-6 space-y-4">
+                        <h3 class="text-lg font-semibold mb-4">🤖 Telegram Bot (Optional)</h3>
+                        <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                            Connect a dedicated Telegram bot to this persona. Leave empty to use the system default bot.
+                        </p>
+
+                        <div>
+                            <label for="telegram_bot_token" class="block text-sm font-medium mb-2">Bot Token</label>
+                            <input
+                                type="text"
+                                wire:model="telegram_bot_token"
+                                id="telegram_bot_token"
+                                class="w-full px-4 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                placeholder="123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11"
+                            >
+                            @error('telegram_bot_token') <span class="text-red-500 text-sm">{{ $message }}</span> @enderror
+                        </div>
+
+                        <div>
+                            <label for="telegram_bot_username" class="block text-sm font-medium mb-2">Bot Username</label>
+                            <input
+                                type="text"
+                                wire:model="telegram_bot_username"
+                                id="telegram_bot_username"
+                                class="w-full px-4 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                placeholder="@YourBotName"
+                            >
+                            @error('telegram_bot_username') <span class="text-red-500 text-sm">{{ $message }}</span> @enderror
+                        </div>
+
+                        <div>
+                            <button
+                                type="button"
+                                wire:click="connectWebhook"
+                                class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white font-medium rounded-lg transition-colors duration-200"
+                                @if(empty($telegram_bot_token)) disabled @endif
+                            >
+                                🔗 Connect Webhook
+                            </button>
+
+                            @if($webhookStatus === 'success')
+                                <span class="ml-3 text-green-600 dark:text-green-400">✓ Connected</span>
+                            @elseif($webhookStatus === 'error')
+                                <span class="ml-3 text-red-600 dark:text-red-400">✗ Failed</span>
+                            @endif
+                        </div>
+
+                        <div class="text-xs text-gray-500 dark:text-gray-400">
+                            <p><strong>How to get a bot token:</strong></p>
+                            <ol class="list-decimal list-inside mt-2 space-y-1">
+                                <li>Message <a href="https://t.me/BotFather" target="_blank" class="text-blue-600 hover:underline">@BotFather</a> on Telegram</li>
+                                <li>Send /newbot and follow instructions</li>
+                                <li>Copy the token and paste it above</li>
+                                <li>Click "Connect Webhook" to activate</li>
+                            </ol>
+                        </div>
+                    </div>
+
                     <!-- Is Active Toggle -->
                     <div class="flex items-center space-x-3">
                         <label class="relative inline-flex items-center cursor-pointer">
@@ -367,6 +426,45 @@
                         </button>
                     </div>
                 </form>
+
+                <!-- Danger Zone -->
+                <div class="mt-8 border-t border-gray-300 dark:border-gray-600 pt-8">
+                    <div class="border border-red-300 dark:border-red-700 rounded-lg p-6 bg-red-50 dark:bg-red-900/20">
+                        <h3 class="text-lg font-semibold text-red-800 dark:text-red-200 mb-2">🚨 Danger Zone</h3>
+                        <p class="text-sm text-red-700 dark:text-red-300 mb-4">
+                            Deleting this persona will permanently remove all associated data including memories, schedules, chat logs, and media files. This action cannot be undone.
+                        </p>
+
+                        @if($confirmingDelete)
+                            <div class="bg-white dark:bg-gray-800 border border-red-400 dark:border-red-600 rounded-lg p-4 mb-4">
+                                <p class="text-sm font-semibold text-red-800 dark:text-red-200 mb-3">
+                                    ⚠️ Are you absolutely sure? This action is irreversible!
+                                </p>
+                                <div class="flex gap-3">
+                                    <button
+                                        wire:click="deletePersona"
+                                        class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-medium rounded-lg transition-colors duration-200"
+                                    >
+                                        Yes, Delete Forever
+                                    </button>
+                                    <button
+                                        wire:click="cancelDelete"
+                                        class="px-4 py-2 bg-gray-300 hover:bg-gray-400 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 font-medium rounded-lg transition-colors duration-200"
+                                    >
+                                        Cancel
+                                    </button>
+                                </div>
+                            </div>
+                        @else
+                            <button
+                                wire:click="confirmDelete"
+                                class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-medium rounded-lg transition-colors duration-200"
+                            >
+                                Delete This Persona
+                            </button>
+                        @endif
+                    </div>
+                </div>
             </div>
         </div>
     </div>

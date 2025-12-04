@@ -27,6 +27,10 @@ class PersonaManager extends Component
     public $is_active = true;
     public $new_photos = [];
     public $accumulated_photos = [];
+    public $confirmingDelete = false;
+    public $telegram_bot_token;
+    public $telegram_bot_username;
+    public $webhookStatus = null;
     public ?Persona $persona = null;
 
     protected $rules = [
@@ -41,12 +45,19 @@ class PersonaManager extends Component
         'voice_frequency' => 'required|in:never,rare,moderate,frequent',
         'image_frequency' => 'required|in:never,rare,moderate,frequent',
         'is_active' => 'boolean',
+        'telegram_bot_token' => 'nullable|string',
+        'telegram_bot_username' => 'nullable|string',
         'new_photos.*' => 'nullable|image|max:10240', // 10MB max per image
     ];
 
-    public function mount()
+    public function mount(Persona $persona)
     {
-        $this->persona = Auth::user()->persona;
+        // Authorization: Ensure user owns this persona
+        if ($persona->user_id !== auth()->id()) {
+            abort(403, 'Unauthorized access to persona.');
+        }
+
+        $this->persona = $persona;
 
         if ($this->persona) {
             $this->name = $this->persona->name;
@@ -61,6 +72,8 @@ class PersonaManager extends Component
             $this->voice_frequency = $this->persona->voice_frequency ?? 'moderate';
             $this->image_frequency = $this->persona->image_frequency ?? 'moderate';
             $this->is_active = $this->persona->is_active;
+            $this->telegram_bot_token = $this->persona->telegram_bot_token;
+            $this->telegram_bot_username = $this->persona->telegram_bot_username;
         } else {
             // Set defaults
             $this->gender = 'female';
@@ -111,6 +124,8 @@ class PersonaManager extends Component
             'voice_frequency' => $this->voice_frequency,
             'image_frequency' => $this->image_frequency,
             'is_active' => $this->is_active,
+            'telegram_bot_token' => $this->telegram_bot_token,
+            'telegram_bot_username' => $this->telegram_bot_username,
         ];
 
         if ($this->persona) {
@@ -355,9 +370,128 @@ MEDIA & TOOLS:
 TEMPLATE;
     }
 
+    public function confirmDelete()
+    {
+        $this->confirmingDelete = true;
+    }
+
+    public function cancelDelete()
+    {
+        $this->confirmingDelete = false;
+    }
+
+    public function deletePersona()
+    {
+        // Check if user has other personas
+        $userPersonasCount = Persona::where('user_id', auth()->id())->count();
+
+        if ($userPersonasCount <= 1) {
+            session()->flash('error', 'Cannot delete your only persona. Create another one first.');
+            $this->confirmingDelete = false;
+            return;
+        }
+
+        try {
+            $personaId = $this->persona->id;
+
+            // Delete all related data (cascade should handle this, but being explicit)
+            $this->persona->memoryTags()->delete();
+            $this->persona->eventSchedules()->delete();
+            $this->persona->messages()->delete();
+
+            // Delete media files
+            $this->persona->clearMediaCollection('avatars');
+            $this->persona->clearMediaCollection('reference_images');
+            $this->persona->clearMediaCollection('generated_images');
+            $this->persona->clearMediaCollection('voice_notes');
+
+            // Delete the persona
+            $this->persona->delete();
+
+            Log::info('PersonaManager: Persona deleted', [
+                'persona_id' => $personaId,
+                'user_id' => auth()->id(),
+            ]);
+
+            session()->flash('success', 'Persona deleted successfully.');
+
+            // Redirect to personas list
+            return redirect()->route('personas.index');
+        } catch (\Exception $e) {
+            Log::error('PersonaManager: Failed to delete persona', [
+                'persona_id' => $this->persona->id,
+                'error' => $e->getMessage(),
+            ]);
+            session()->flash('error', 'Failed to delete persona. Please try again.');
+            $this->confirmingDelete = false;
+        }
+    }
+
+    public function connectWebhook()
+    {
+        if (empty($this->telegram_bot_token)) {
+            session()->flash('error', 'Please enter a Telegram Bot Token first.');
+            return;
+        }
+
+        try {
+            // Save the token first
+            $this->persona->update([
+                'telegram_bot_token' => $this->telegram_bot_token,
+                'telegram_bot_username' => $this->telegram_bot_username,
+            ]);
+
+            // Set webhook URL
+            $appUrl = config('app.url');
+            $webhookUrl = "{$appUrl}/telegram/webhook/{$this->telegram_bot_token}";
+
+            $webhookParams = ['url' => $webhookUrl];
+
+            // Add secret token if configured (optional but recommended)
+            $webhookSecret = env('TELEGRAM_WEBHOOK_SECRET');
+            if ($webhookSecret) {
+                $webhookParams['secret_token'] = $webhookSecret;
+            }
+
+            $response = \Illuminate\Support\Facades\Http::post(
+                "https://api.telegram.org/bot{$this->telegram_bot_token}/setWebhook",
+                $webhookParams
+            );
+
+            $result = $response->json();
+
+            if ($result['ok'] ?? false) {
+                $this->webhookStatus = 'success';
+                session()->flash('success', "Webhook connected successfully! URL: {$webhookUrl}");
+
+                Log::info('PersonaManager: Webhook connected', [
+                    'persona_id' => $this->persona->id,
+                    'webhook_url' => $webhookUrl,
+                ]);
+            } else {
+                $this->webhookStatus = 'error';
+                $errorMsg = $result['description'] ?? 'Unknown error';
+                session()->flash('error', "Failed to connect webhook: {$errorMsg}");
+
+                Log::error('PersonaManager: Webhook connection failed', [
+                    'persona_id' => $this->persona->id,
+                    'error' => $errorMsg,
+                ]);
+            }
+        } catch (\Exception $e) {
+            $this->webhookStatus = 'error';
+            session()->flash('error', 'Failed to connect webhook: ' . $e->getMessage());
+
+            Log::error('PersonaManager: Webhook connection exception', [
+                'persona_id' => $this->persona->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
     public function render()
     {
         return view('livewire.persona-manager')
-            ->layout('layouts.app');
+            ->layout('layouts.persona', ['persona' => $this->persona]);
     }
 }
