@@ -76,8 +76,8 @@
                                class="group block bg-gray-100 dark:bg-gray-700 rounded-lg p-3 hover:bg-gray-60 dark:hover:bg-gray-500 transition-all duration-200 border border-gray-200 dark:border-gray-600">
 
                                 <div class="flex items-center gap-3">
-                                    @if($persona->getFirstMediaUrl('avatars'))
-                                        <img src="{{ $persona->getFirstMediaUrl('avatars') }}"
+                                    @if($persona->getFirstMediaUrl('avatar'))
+                                        <img src="{{ $persona->getFirstMediaUrl('avatar') }}"
                                              alt="{{ $persona->name }}"
                                              class="w-10 h-10 rounded-full object-cover">
                                     @else

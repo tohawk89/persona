@@ -122,7 +122,7 @@
                     </div>
 
                     <!-- Appearance Section (2-Stage) -->
-                    <div class="border border-gray-300 dark:border-gray-600 rounded-lg p-6 space-y-4">
+                    {{-- <div class="border border-gray-300 dark:border-gray-600 rounded-lg p-6 space-y-4">
                         <h3 class="text-lg font-semibold mb-4">👤 Appearance Configuration</h3>
 
                         <!-- Stage 1: Raw Concept -->
@@ -174,7 +174,7 @@
                             <p class="text-xs text-gray-500 mt-1">You can manually edit this if needed</p>
                             @error('physical_traits') <span class="text-red-500 text-sm">{{ $message }}</span> @enderror
                         </div>
-                    </div>
+                    </div> --}}
 
                     <!-- Gender Selection -->
                     <div>

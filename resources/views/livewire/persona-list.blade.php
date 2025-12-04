@@ -23,8 +23,8 @@
                         @foreach($personas as $persona)
                             <div class="border border-gray-200 dark:border-gray-700 rounded-lg p-6 hover:shadow-lg transition-shadow">
                                 <div class="flex items-center mb-4">
-                                    @if($persona->getFirstMediaUrl('avatars'))
-                                        <img src="{{ $persona->getFirstMediaUrl('avatars') }}"
+                                    @if($persona->getFirstMediaUrl('avatar'))
+                                        <img src="{{ $persona->getFirstMediaUrl('avatar') }}"
                                              alt="{{ $persona->name }}"
                                              class="w-16 h-16 rounded-full object-cover mr-4">
                                     @else
