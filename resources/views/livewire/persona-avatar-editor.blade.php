@@ -163,10 +163,10 @@
                                 </button>
                             </div>
                         @endif
-                    </div>
+        </div>
 
-                    <!-- Right Column: Preview Area -->
-                    <div>
+        <!-- Right Column: Preview Area -->
+        <div>
                         <div class="bg-gray-50 dark:bg-gray-900 rounded-lg p-6">
                             <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">
                                 Current Passport Photo
@@ -222,9 +222,6 @@
                                 </div>
                             </div>
                         </div>
-                    </div>
-                </div>
-            </div>
         </div>
     </div>
 
