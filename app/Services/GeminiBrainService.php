@@ -1476,6 +1476,16 @@ PROMPT;
     {
         $relevantTags = collect();
 
+        // TIER 0: High Importance - Critical facts always included (importance >= 8)
+        $highImportanceTags = $persona->memoryTags()
+            ->where('importance', '>=', 8)
+            ->get();
+        $relevantTags = $relevantTags->merge($highImportanceTags);
+
+        Log::info('GeminiBrainService: Tier 0 (High Importance) loaded', [
+            'count' => $highImportanceTags->count(),
+        ]);
+
         // TIER 1: Recency - Recent events are always relevant
         $recentTags = $persona->memoryTags()
             ->where('updated_at', '>=', now()->subDays(3))

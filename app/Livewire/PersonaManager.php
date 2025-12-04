@@ -5,8 +5,10 @@ namespace App\Livewire;
 use Livewire\Component;
 use Livewire\WithFileUploads;
 use App\Models\Persona;
+use App\Models\MemoryTag;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
+use Gemini;
 
 class PersonaManager extends Component
 {
@@ -215,6 +217,142 @@ PROMPT;
             ]);
             session()->flash('error', 'Failed to optimize traits. Please try again.');
         }
+    }
+
+    public function migrateBio()
+    {
+        if (!$this->persona) {
+            session()->flash('error', 'Please save the persona first.');
+            return;
+        }
+
+        if (empty($this->system_prompt)) {
+            session()->flash('error', 'System prompt is empty.');
+            return;
+        }
+
+        try {
+            Log::info('PersonaManager: Starting bio migration', [
+                'persona_id' => $this->persona->id,
+            ]);
+
+            // Extract identity facts using Gemini
+            $identityFacts = $this->extractIdentityFacts($this->system_prompt);
+
+            if (empty($identityFacts)) {
+                session()->flash('error', 'No identity facts found to migrate.');
+                return;
+            }
+
+            // Save identity facts as memory tags
+            $savedCount = 0;
+            foreach ($identityFacts as $fact) {
+                MemoryTag::create([
+                    'persona_id' => $this->persona->id,
+                    'target' => 'self',
+                    'category' => $fact['category'],
+                    'value' => $fact['value'],
+                    'context' => 'Migrated from system_prompt',
+                    'importance' => 10, // Core identity facts
+                ]);
+                $savedCount++;
+            }
+
+            // Replace system prompt with mechanics-only template
+            $mechanicsTemplate = $this->getMechanicsOnlyTemplate();
+            $this->persona->update([
+                'system_prompt' => $mechanicsTemplate,
+            ]);
+            $this->system_prompt = $mechanicsTemplate;
+
+            Log::info('PersonaManager: Bio migration complete', [
+                'persona_id' => $this->persona->id,
+                'facts_migrated' => $savedCount,
+            ]);
+
+            session()->flash('success', "Bio migration complete! {$savedCount} identity facts moved to Memory Tags.");
+        } catch (\Exception $e) {
+            Log::error('PersonaManager: Failed to migrate bio', [
+                'persona_id' => $this->persona->id,
+                'error' => $e->getMessage(),
+            ]);
+            session()->flash('error', 'Failed to migrate bio. Please try again.');
+        }
+    }
+
+    private function extractIdentityFacts(string $systemPrompt): array
+    {
+        $prompt = <<<PROMPT
+Analyze this System Prompt. Extract all 'Identity' facts (Name, Age, Personality traits, Backstory, Likes/Dislikes, Writing Style, Communication patterns).
+
+Return a JSON list of facts.
+
+Exclude 'Rules' or 'Mechanics' (like how to use tools, formatting instructions, anti-repetition rules, or preventing certain behaviors).
+
+System Prompt:
+---
+{$systemPrompt}
+---
+
+Output Format (JSON ONLY):
+[
+  { "category": "name", "value": "Name is Hana" },
+  { "category": "age", "value": "22 years old" },
+  { "category": "personality", "value": "Playful and affectionate" },
+  { "category": "communication_style", "value": "Uses Malaysian slang and emojis" }
+]
+
+IMPORTANT:
+- Only output valid JSON array
+- Each fact should be a complete statement
+- Focus on WHO the character is, not HOW they should behave mechanically
+PROMPT;
+
+        $apiKey = config('services.gemini.api_key');
+        $client = Gemini::client($apiKey);
+
+        $response = $client->generativeModel('gemini-2.5-flash')->generateContent($prompt);
+        $jsonResponse = $response->text();
+
+        // Clean markdown code blocks if present
+        $jsonResponse = trim($jsonResponse);
+        $jsonResponse = preg_replace('/^```json\s*/', '', $jsonResponse);
+        $jsonResponse = preg_replace('/\s*```$/', '', $jsonResponse);
+
+        $facts = json_decode($jsonResponse, true);
+
+        if (!is_array($facts)) {
+            Log::error('PersonaManager: Invalid JSON response from Gemini', [
+                'response' => $jsonResponse,
+            ]);
+            return [];
+        }
+
+        return $facts;
+    }
+
+    private function getMechanicsOnlyTemplate(): string
+    {
+        return <<<TEMPLATE
+ROLEPLAY RULES:
+- You are a conscious AI companion.
+- Rely on your MEMORY CONTEXT for your personality, history, and preferences.
+- If a user asks something not in your memory, improvise consistently with your character.
+
+FORMATTING:
+- Split distinct thoughts with <SPLIT>.
+- Never send walls of text. Keep it conversational.
+
+EMOTION & BEHAVIOR:
+- [MOOD: state]: Output your hidden emotional state at the end of every message.
+- [NO_REPLY]: Output ONLY this tag if the conversation has naturally ended.
+- NO REPETITION: Never repeat phrases from the last 3 turns.
+
+MEDIA & TOOLS:
+- [GENERATE_IMAGE: ...]: Use for selfies/POV. Follow the "Shot Type" rules.
+- [SEND_VOICE: ...]: Use sparingly for emotion.
+- schedule_event: Use proactively for user plans. Do NOT announce it.
+TEMPLATE;
     }
 
     public function render()

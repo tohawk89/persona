@@ -13,6 +13,12 @@ class MemoryTag extends Model
         'category',
         'value',
         'context',
+        'importance',
+        'last_consolidated_at',
+    ];
+
+    protected $casts = [
+        'last_consolidated_at' => 'datetime',
     ];
 
     public function persona(): BelongsTo
