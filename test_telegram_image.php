@@ -50,28 +50,28 @@ $prompt = "Taking a selfie at a cozy coffee shop, smiling warmly";
 
 try {
     $imageUrl = GeminiBrain::generateImage($prompt, $persona);
-    
+
     if (!$imageUrl) {
         echo "❌ Image generation failed (returned null)\n";
         exit(1);
     }
-    
+
     echo "✅ Image generated successfully!\n";
     echo "   URL: {$imageUrl}\n";
     echo "\n";
-    
+
     // Send to Telegram
     echo "📤 Sending image to Telegram...\n";
-    
+
     $result = Telegram::sendPhoto($chatId, $imageUrl, "Here's a selfie from the coffee shop! ☕️");
-    
+
     if ($result) {
         echo "✅ Image sent successfully to Telegram!\n";
         echo "   Check your Telegram chat with the bot.\n";
     } else {
         echo "❌ Failed to send image to Telegram.\n";
     }
-    
+
 } catch (\Exception $e) {
     echo "❌ Error: {$e->getMessage()}\n";
     echo "   Trace: {$e->getTraceAsString()}\n";
