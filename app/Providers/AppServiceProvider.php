@@ -27,7 +27,7 @@ class AppServiceProvider extends ServiceProvider
         });
 
         $this->app->singleton(GeminiBrainService::class, function ($app) {
-            return new GeminiBrainService($app->make(ImageGeneratorInterface::class));
+            return new GeminiBrainService($app->make(ImageGeneratorManager::class));
         });
 
         $this->app->singleton(TelegramService::class, function ($app) {
