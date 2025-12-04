@@ -92,25 +92,81 @@ class Dashboard extends Component
     public function render()
     {
         $user = Auth::user();
-        $persona = $user->persona;
 
-        $nextEvent = null;
-        $lastInteraction = null;
+        // 1. Fetch all personas with relationships
+        $personas = Persona::where('user_id', $user->id)
+            ->with([
+                'memoryTags' => function ($query) {
+                    $query->where('category', 'current_mood')
+                        ->latest()
+                        ->limit(1);
+                },
+                'messages' => function ($query) {
+                    $query->latest()->limit(1);
+                }
+            ])
+            ->get()
+            ->map(function ($persona) {
+                // Calculate is_awake
+                $now = \Carbon\Carbon::now();
+                $wakeTime = \Carbon\Carbon::parse($persona->wake_time);
+                $sleepTime = \Carbon\Carbon::parse($persona->sleep_time);
 
-        if ($persona) {
-            $nextEvent = EventSchedule::where('persona_id', $persona->id)
-                ->where('status', 'pending')
-                ->where('scheduled_at', '>', now())
-                ->orderBy('scheduled_at', 'asc')
-                ->first();
-        }
+                $persona->is_awake = $now->between($wakeTime, $sleepTime);
 
-        $lastInteraction = $user->last_interaction_at;
+                return $persona;
+            });
+
+        // 2. Upcoming events (next 5)
+        $upcomingEvents = EventSchedule::whereHas('persona', function ($query) use ($user) {
+                $query->where('user_id', $user->id);
+            })
+            ->where('status', 'pending')
+            ->where('scheduled_at', '>=', now())
+            ->with('persona')
+            ->orderBy('scheduled_at', 'asc')
+            ->limit(5)
+            ->get();
+
+        // 3. Life updates (last 24 hours)
+        $lifeUpdates = MemoryTag::whereHas('persona', function ($query) use ($user) {
+                $query->where('user_id', $user->id);
+            })
+            ->where('updated_at', '>=', now()->subHours(24))
+            ->with('persona')
+            ->orderBy('updated_at', 'desc')
+            ->limit(5)
+            ->get();
+
+        // 4. Usage stats for today
+        $todayStart = now()->startOfDay();
+        $stats = [
+            'messages_count' => \App\Models\Message::whereHas('persona', function ($query) use ($user) {
+                    $query->where('user_id', $user->id);
+                })
+                ->where('created_at', '>=', $todayStart)
+                ->count(),
+
+            'photos_count' => \App\Models\Message::whereHas('persona', function ($query) use ($user) {
+                    $query->where('user_id', $user->id);
+                })
+                ->whereNotNull('image_path')
+                ->where('created_at', '>=', $todayStart)
+                ->count(),
+
+            'voice_count' => \App\Models\Message::whereHas('persona', function ($query) use ($user) {
+                    $query->where('user_id', $user->id);
+                })
+                ->where('content', 'like', '%[AUDIO:%')
+                ->where('created_at', '>=', $todayStart)
+                ->count(),
+        ];
 
         return view('livewire.dashboard', [
-            'persona' => $persona,
-            'nextEvent' => $nextEvent,
-            'lastInteraction' => $lastInteraction,
-        ]);
+            'personas' => $personas,
+            'upcomingEvents' => $upcomingEvents,
+            'lifeUpdates' => $lifeUpdates,
+            'stats' => $stats,
+        ])->layout('layouts.app');
     }
 }
