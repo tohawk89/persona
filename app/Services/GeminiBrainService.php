@@ -13,7 +13,7 @@ use Illuminate\Support\Str;
 use App\Models\Persona;
 use App\Models\MemoryTag;
 use App\Models\EventSchedule;
-use App\Contracts\ImageGeneratorInterface;
+use App\Services\ImageGeneratorManager;
 
 class GeminiBrainService
 {
@@ -34,7 +34,7 @@ class GeminiBrainService
     private array $moodCache = [];
     private ?Persona $currentPersona = null;
 
-    public function __construct(private readonly ImageGeneratorInterface $imageGenerator)
+    public function __construct(private readonly ImageGeneratorManager $imageGeneratorManager)
     {
     }
 
@@ -593,17 +593,20 @@ PROMPT;
     public function generateImage(string $prompt, Persona $persona): ?string
     {
         try {
+            // Build the scene description with persona's physical traits
             $enhancedPrompt = $this->buildImagePrompt($prompt, $persona);
 
-            Log::info('GeminiBrainService: Generating image via driver', [
+            Log::info('GeminiBrainService: Generating image via Kie.ai Edit (Image-to-Image)', [
                 'original_prompt' => $prompt,
                 'enhanced_prompt' => $enhancedPrompt,
-                'driver' => config('services.image_generator.default', 'cloudflare'),
+                'persona_id' => $persona->id,
             ]);
 
             $this->currentPersona = $persona;
 
-            $url = $this->imageGenerator->generate($enhancedPrompt, $persona);
+            // Use Kie.ai Edit driver for facial consistency
+            // This automatically fetches the persona's avatar as reference
+            $url = $this->imageGeneratorManager->driver('kie_ai_edit')->generate($enhancedPrompt, $persona);
 
             return $url ?: null;
         } catch (\Exception $e) {

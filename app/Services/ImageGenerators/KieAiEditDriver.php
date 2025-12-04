@@ -104,20 +104,39 @@ class KieAiEditDriver implements ImageGeneratorInterface
             return $this->referenceImages;
         }
 
-        // Otherwise, get from persona's reference_images media collection
-        $media = $persona->getMedia('reference_images');
-
-        if ($media->isEmpty()) {
-            // Fallback to avatar if no reference images
-            $avatarMedia = $persona->getMedia('avatars');
-            if ($avatarMedia->isNotEmpty()) {
-                return [$avatarMedia->first()->getUrl()];
-            }
-            return [];
+        // Priority 1: Use avatar (passport photo) for facial consistency
+        $avatarMedia = $persona->getMedia('avatar');
+        if ($avatarMedia->isNotEmpty()) {
+            Log::info('KieAiEditDriver: Using avatar as reference', [
+                'persona_id' => $persona->id,
+                'avatar_url' => $avatarMedia->first()->getUrl(),
+            ]);
+            return [$avatarMedia->first()->getUrl()];
         }
 
-        // Return up to 10 image URLs (API limit)
-        return $media->take(10)->pluck('original_url')->toArray();
+        // Priority 2: Fallback to reference_image (single file)
+        $referenceMedia = $persona->getMedia('reference_image');
+        if ($referenceMedia->isNotEmpty()) {
+            Log::info('KieAiEditDriver: Using reference_image as fallback', [
+                'persona_id' => $persona->id,
+            ]);
+            return [$referenceMedia->first()->getUrl()];
+        }
+
+        // Priority 3: Legacy fallback to reference_images collection (plural)
+        $media = $persona->getMedia('reference_images');
+        if ($media->isNotEmpty()) {
+            Log::info('KieAiEditDriver: Using reference_images collection as fallback', [
+                'persona_id' => $persona->id,
+                'count' => $media->count(),
+            ]);
+            return $media->take(10)->pluck('original_url')->toArray();
+        }
+
+        Log::warning('KieAiEditDriver: No reference images found', [
+            'persona_id' => $persona->id,
+        ]);
+        return [];
     }
 
     private function submitGenerationTask(string $apiKey, string $prompt, array $imageUrls): ?string
