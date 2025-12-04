@@ -66,6 +66,37 @@ class KieAiEditDriver implements ImageGeneratorInterface
         return $this->downloadAndSaveImage($imageUrl, $persona);
     }
 
+    public function editImage(string $referenceImageUrl, string $prompt, Persona $persona): string
+    {
+        $apiKey = $this->apiKey ?? config('services.image_generator.drivers.kie_ai.api_key');
+
+        if (!$apiKey) {
+            Log::error('KieAiEditDriver: Missing API key');
+            return '';
+        }
+
+        Log::info('KieAiEditDriver: Editing image with reference', [
+            'persona_id' => $persona->id,
+            'prompt_length' => strlen($prompt),
+            'reference_url' => $referenceImageUrl,
+        ]);
+
+        // Step 1: Submit generation task with single reference image
+        $taskId = $this->submitGenerationTask($apiKey, $prompt, [$referenceImageUrl]);
+        if (!$taskId) {
+            return '';
+        }
+
+        // Step 2: Poll for completion
+        $imageUrl = $this->pollForCompletion($apiKey, $taskId);
+        if (!$imageUrl) {
+            return '';
+        }
+
+        // Step 3: Download and save
+        return $this->downloadAndSaveImage($imageUrl, $persona);
+    }
+
     private function getReferenceImageUrls(Persona $persona): array
     {
         // Use manually provided reference images if available

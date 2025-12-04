@@ -106,4 +106,13 @@ class CloudflareFluxDriver implements ImageGeneratorInterface
 
         return $url ?? null;
     }
+
+    public function editImage(string $referenceImageUrl, string $prompt, Persona $persona): string
+    {
+        // Cloudflare Flux doesn't support image editing, only text-to-image generation
+        Log::warning('CloudflareFluxDriver: editImage called but not supported by this driver', [
+            'persona_id' => $persona->id,
+        ]);
+        return '';
+    }
 }

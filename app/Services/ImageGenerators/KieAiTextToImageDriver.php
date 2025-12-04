@@ -53,6 +53,15 @@ class KieAiTextToImageDriver implements ImageGeneratorInterface
         return $this->downloadAndSaveImage($imageUrl, $persona);
     }
 
+    public function editImage(string $referenceImageUrl, string $prompt, Persona $persona): string
+    {
+        // This driver doesn't support image editing, only text-to-image generation
+        Log::warning('KieAiTextToImageDriver: editImage called but not supported by this driver', [
+            'persona_id' => $persona->id,
+        ]);
+        return '';
+    }
+
     private function submitGenerationTask(string $apiKey, string $prompt): ?string
     {
         for ($attempt = 1; $attempt <= self::MAX_RETRIES; $attempt++) {

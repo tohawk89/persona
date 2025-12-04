@@ -7,10 +7,12 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Spatie\MediaLibrary\HasMedia;
 use Spatie\MediaLibrary\InteractsWithMedia;
+use Spatie\MediaLibrary\MediaCollections\Models\Media;
 
 class Persona extends Model implements HasMedia
 {
     use InteractsWithMedia;
+
     protected $fillable = [
         'user_id',
         'name',
@@ -52,5 +54,18 @@ class Persona extends Model implements HasMedia
     public function messages(): HasMany
     {
         return $this->hasMany(Message::class);
+    }
+
+    public function registerMediaCollections(): void
+    {
+        $this->addMediaCollection('reference_image')
+            ->singleFile();
+
+        $this->addMediaCollection('avatar')
+            ->singleFile();
+
+        $this->addMediaCollection('generated_images');
+
+        $this->addMediaCollection('voice_notes');
     }
 }

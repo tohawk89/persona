@@ -20,6 +20,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::prefix('personas/{persona}')->group(function () {
         Route::get('/overview', \App\Livewire\PersonaDashboard::class)->name('persona.dashboard');
         Route::get('/edit', \App\Livewire\PersonaManager::class)->name('persona.edit');
+        Route::get('/avatar', \App\Livewire\PersonaAvatarEditor::class)->name('persona.avatar');
         Route::get('/memory', \App\Livewire\MemoryBrain::class)->name('persona.memory');
         Route::get('/schedule', \App\Livewire\ScheduleTimeline::class)->name('persona.schedule');
         Route::get('/logs', \App\Livewire\ChatLogs::class)->name('persona.logs');
