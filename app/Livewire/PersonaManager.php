@@ -82,9 +82,6 @@ class PersonaManager extends Component
         }
     }
 
-
-    }
-
     public function save()
     {
         $this->validate();
