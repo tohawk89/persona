@@ -1,46 +1,33 @@
-<div class="py-12">
-    <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
-        <div class="bg-white dark:bg-gray-800 overflow-hidden shadow-sm sm:rounded-lg">
-            <div class="p-6 text-gray-900 dark:text-gray-100">
-                <!-- Header -->
-                <div class="mb-8">
-                    <h2 class="text-2xl font-bold text-gray-900 dark:text-white">
-                        Create Passport Photo for {{ $persona->name }}
-                    </h2>
-                    <p class="mt-2 text-sm text-gray-600 dark:text-gray-400">
-                        Upload a reference photo or generate a new AI passport-style avatar
-                    </p>
-                </div>
-
-                <!-- Mode Toggle -->
-                <div class="mb-8">
+<div>
+    <!-- Mode Toggle -->
+    <div class="mb-6">
                     <div class="flex space-x-4 border-b border-gray-200 dark:border-gray-700">
-                        <button 
+                        <button
                             wire:click="$set('mode', 'upload')"
                             class="px-6 py-3 text-sm font-medium border-b-2 transition-colors
-                                {{ $mode === 'upload' 
-                                    ? 'border-blue-500 text-blue-600 dark:text-blue-400' 
-                                    : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300' 
+                                {{ $mode === 'upload'
+                                    ? 'border-blue-500 text-blue-600 dark:text-blue-400'
+                                    : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300'
                                 }}"
                         >
                             📤 Upload Photo
                         </button>
-                        <button 
+                        <button
                             wire:click="$set('mode', 'generate')"
                             class="px-6 py-3 text-sm font-medium border-b-2 transition-colors
-                                {{ $mode === 'generate' 
-                                    ? 'border-blue-500 text-blue-600 dark:text-blue-400' 
-                                    : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300' 
+                                {{ $mode === 'generate'
+                                    ? 'border-blue-500 text-blue-600 dark:text-blue-400'
+                                    : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300'
                                 }}"
                         >
                             ✨ Generate New
                         </button>
-                    </div>
-                </div>
+            </div>
+        </div>
 
-                <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                    <!-- Left Column: Input Section -->
-                    <div>
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
+        <!-- Left Column: Input Section -->
+        <div>
                         @if($mode === 'upload')
                             <!-- Upload Mode -->
                             <div class="space-y-6">
@@ -52,11 +39,11 @@
                                         <div class="space-y-1 text-center">
                                             @if($photo)
                                                 <div class="mb-4">
-                                                    <img src="{{ $photo->temporaryUrl() }}" 
-                                                         alt="Preview" 
+                                                    <img src="{{ $photo->temporaryUrl() }}"
+                                                         alt="Preview"
                                                          class="mx-auto h-64 w-auto rounded-lg shadow-md">
                                                 </div>
-                                                <button 
+                                                <button
                                                     wire:click="$set('photo', null)"
                                                     type="button"
                                                     class="text-sm text-red-600 hover:text-red-500 dark:text-red-400 dark:hover:text-red-300"
@@ -78,7 +65,7 @@
                                                     PNG, JPG, GIF up to 10MB
                                                 </p>
                                             @endif
-                                            
+
                                             @error('photo')
                                                 <p class="mt-2 text-sm text-red-600 dark:text-red-400">{{ $message }}</p>
                                             @enderror
@@ -92,13 +79,13 @@
                                         <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                                             Current Reference Image
                                         </label>
-                                        <img src="{{ $persona->getFirstMediaUrl('reference_image') }}" 
-                                             alt="Current Reference" 
+                                        <img src="{{ $persona->getFirstMediaUrl('reference_image') }}"
+                                             alt="Current Reference"
                                              class="w-full rounded-lg shadow-md">
                                     </div>
                                 @endif
 
-                                <button 
+                                <button
                                     wire:click="uploadReference"
                                     wire:loading.attr="disabled"
                                     wire:target="photo,uploadReference"
@@ -124,7 +111,7 @@
                                     <label for="gender" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                                         Gender
                                     </label>
-                                    <select 
+                                    <select
                                         wire:model="gender"
                                         id="gender"
                                         class="mt-1 block w-full py-2 px-3 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm text-gray-900 dark:text-gray-100"
@@ -142,7 +129,7 @@
                                     <label for="description" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                                         Specific Features (Optional)
                                     </label>
-                                    <textarea 
+                                    <textarea
                                         wire:model="description"
                                         id="description"
                                         rows="4"
@@ -157,7 +144,7 @@
                                     @enderror
                                 </div>
 
-                                <button 
+                                <button
                                     wire:click="generateAvatar"
                                     wire:loading.attr="disabled"
                                     wire:target="generateAvatar"
@@ -184,12 +171,12 @@
                             <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">
                                 Current Passport Photo
                             </h3>
-                            
+
                             @if($persona->hasMedia('avatar'))
                                 <div class="relative">
-                                    <img 
-                                        src="{{ $persona->getFirstMediaUrl('avatar') }}" 
-                                        alt="{{ $persona->name }} Avatar" 
+                                    <img
+                                        src="{{ $persona->getFirstMediaUrl('avatar') }}"
+                                        alt="{{ $persona->name }} Avatar"
                                         class="w-full rounded-lg shadow-lg"
                                         wire:key="avatar-{{ $persona->getFirstMedia('avatar')->id ?? 'none' }}"
                                     >
@@ -234,8 +221,6 @@
                                     </div>
                                 </div>
                             </div>
-                        </div>
-                    </div>
                 </div>
             </div>
         </div>
@@ -244,7 +229,6 @@
     <!-- Toast Notifications -->
     <script>
         window.addEventListener('success', event => {
-            // You can integrate with your toast notification system here
             alert(event.detail.message);
         });
 
@@ -253,10 +237,9 @@
         });
 
         window.addEventListener('avatar-updated', event => {
-            // Optionally refresh the page or update UI
             setTimeout(() => {
                 window.location.reload();
-            }, 1000);
+            }, 500);
         });
     </script>
 </div>

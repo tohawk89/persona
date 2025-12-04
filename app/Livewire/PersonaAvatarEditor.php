@@ -30,7 +30,7 @@ class PersonaAvatarEditor extends Component
     public function mount(Persona $persona): void
     {
         $this->persona = $persona;
-        
+
         // Set default gender from persona if available
         if ($persona->gender) {
             $this->gender = $persona->gender;
@@ -159,7 +159,6 @@ class PersonaAvatarEditor extends Component
 
     public function render()
     {
-        return view('livewire.persona-avatar-editor')
-            ->layout('layouts.app');
+        return view('livewire.persona-avatar-editor');
     }
 }

@@ -25,8 +25,6 @@ class PersonaManager extends Component
     public $voice_frequency;
     public $image_frequency;
     public $is_active = true;
-    public $new_photos = [];
-    public $accumulated_photos = [];
     public $confirmingDelete = false;
     public $telegram_bot_token;
     public $telegram_bot_username;
@@ -47,7 +45,6 @@ class PersonaManager extends Component
         'is_active' => 'boolean',
         'telegram_bot_token' => 'nullable|string',
         'telegram_bot_username' => 'nullable|string',
-        'new_photos.*' => 'nullable|image|max:10240', // 10MB max per image
     ];
 
     public function mount(Persona $persona)
@@ -85,25 +82,7 @@ class PersonaManager extends Component
         }
     }
 
-    public function updatedNewPhotos()
-    {
-        $this->validate([
-            'new_photos.*' => 'image|max:10240',
-        ]);
 
-        // Accumulate photos instead of replacing
-        if (!empty($this->new_photos)) {
-            foreach ($this->new_photos as $photo) {
-                $this->accumulated_photos[] = $photo;
-            }
-            $this->new_photos = [];
-        }
-    }
-
-    public function removeAccumulatedPhoto($index)
-    {
-        unset($this->accumulated_photos[$index]);
-        $this->accumulated_photos = array_values($this->accumulated_photos);
     }
 
     public function save()
@@ -135,32 +114,13 @@ class PersonaManager extends Component
             $this->persona = Persona::create($data);
         }
 
-        // Handle multiple reference images upload
-        if (!empty($this->accumulated_photos)) {
-            foreach ($this->accumulated_photos as $photo) {
-                $this->persona->addMedia($photo->getRealPath())
-                    ->usingFileName($photo->getClientOriginalName())
-                    ->toMediaCollection('reference_images');
-            }
-            $this->accumulated_photos = [];
-        }
-
         // Refresh persona to load media
         $this->persona = $this->persona->fresh();
 
         session()->flash('success', 'Persona saved successfully!');
     }
 
-    public function deleteMedia($mediaId)
-    {
-        if ($this->persona) {
-            $media = $this->persona->getMedia('reference_images')->find($mediaId);
-            if ($media) {
-                $media->delete();
-                session()->flash('success', 'Image deleted successfully!');
-            }
-        }
-    }
+
 
     public function optimizeSystemPrompt()
     {
