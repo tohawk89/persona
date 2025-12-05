@@ -650,23 +650,15 @@ PROMPT;
 
         $imageDescription = trim($matches[1]);
 
-        Log::info('GeminiBrainService: Image generation requested in response', [
+        Log::info('GeminiBrainService: Image generation requested (will be queued)', [
             'description' => $imageDescription,
+            'persona_id' => $persona->id,
         ]);
 
-        $imageUrl = $this->generateImage($imageDescription, $persona);
-
-        if ($imageUrl) {
-            return preg_replace(
-                '/\[GENERATE_IMAGE:\s*.+?\]/i',
-                "[IMAGE: {$imageUrl}]",
-                $textResponse
-            );
-        }
-
+        // Replace with special pending tag - ProcessChatResponse will dispatch async job
         return preg_replace(
             '/\[GENERATE_IMAGE:\s*.+?\]/i',
-            '[Failed to generate image]',
+            "[IMAGE: pending|{$imageDescription}]",
             $textResponse
         );
     }
