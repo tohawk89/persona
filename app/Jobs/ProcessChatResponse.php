@@ -117,8 +117,10 @@ class ProcessChatResponse implements ShouldQueue, ShouldBeUnique
                 // Send typing indicator
                 Telegram::sendChatAction($this->user->telegram_chat_id, 'typing', $this->botToken);
 
-                // STEP 3: Get chat history (last 20 messages excluding the current buffer)
+                // STEP 3: Get chat history (last 20 messages for THIS SPECIFIC PERSONA)
+                // CRITICAL: Must filter by persona_id to prevent cross-contamination
                 $chatHistory = Message::where('user_id', $this->user->id)
+                    ->where('persona_id', $persona->id)
                     ->latest()
                     ->take(20)
                     ->get()
@@ -268,7 +270,7 @@ class ProcessChatResponse implements ShouldQueue, ShouldBeUnique
             // CRITICAL: Save bot message with image to DB
             Message::create([
                 'user_id' => $this->user->id,
-                'persona_id' => $this->user->persona?->id,
+                'persona_id' => $this->persona->id,
                 'sender_type' => 'bot',
                 'content' => $cleanCaption ?: '[Image]',
                 'image_path' => $imageUrl,
@@ -287,7 +289,7 @@ class ProcessChatResponse implements ShouldQueue, ShouldBeUnique
             // CRITICAL: Save bot message with voice to DB
             Message::create([
                 'user_id' => $this->user->id,
-                'persona_id' => $this->user->persona?->id,
+                'persona_id' => $this->persona->id,
                 'sender_type' => 'bot',
                 'content' => '[Voice Note]',
             ]);
@@ -320,7 +322,7 @@ class ProcessChatResponse implements ShouldQueue, ShouldBeUnique
                 // CRITICAL: Save each part to DB for context continuity
                 Message::create([
                     'user_id' => $this->user->id,
-                    'persona_id' => $this->user->persona?->id,
+                    'persona_id' => $this->persona->id,
                     'sender_type' => 'bot',
                     'content' => $part,
                 ]);
@@ -352,7 +354,7 @@ class ProcessChatResponse implements ShouldQueue, ShouldBeUnique
 
                 Message::create([
                     'user_id' => $this->user->id,
-                    'persona_id' => $this->user->persona?->id,
+                    'persona_id' => $this->persona->id,
                     'sender_type' => 'bot',
                     'content' => $part,
                 ]);

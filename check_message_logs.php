@@ -21,16 +21,16 @@ foreach ($personas as $persona) {
     echo "   User: {$persona->user->name} (ID: {$persona->user_id})\n";
     echo "   Chat ID: {$persona->user->telegram_chat_id}\n";
     echo "   Bot Token: " . ($persona->telegram_bot_token ? substr($persona->telegram_bot_token, 0, 15) . '...' : 'System Default') . "\n";
-    
+
     $messageCount = Message::where('persona_id', $persona->id)->count();
     echo "   Messages: {$messageCount}\n";
-    
+
     // Get last 5 messages
     $recentMessages = Message::where('persona_id', $persona->id)
         ->orderBy('created_at', 'desc')
         ->take(5)
         ->get();
-    
+
     if ($recentMessages->isNotEmpty()) {
         echo "\n   📨 Last 5 Messages:\n";
         foreach ($recentMessages as $msg) {
