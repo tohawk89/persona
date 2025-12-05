@@ -259,51 +259,6 @@ class ProcessChatResponse implements ShouldQueue, ShouldBeUnique
         if ($hasImage) {
             $imageUrl = trim($imageMatch[1]);
 
-            // Check if this is a pending image (needs async generation)
-            if (str_starts_with($imageUrl, 'pending|')) {
-                $imageDescription = substr($imageUrl, strlen('pending|'));
-
-                // Clean caption: remove <SPLIT> tags
-                $cleanCaption = $textPart ? str_replace(['<SPLIT>', '<split>'], '', $textPart) : null;
-                $cleanCaption = $cleanCaption ? trim($cleanCaption) : null;
-
-                // Send text message first (if exists)
-                if ($cleanCaption) {
-                    Telegram::sendChatAction($this->user->telegram_chat_id, 'typing');
-                    Telegram::sendMessage($this->user->telegram_chat_id, $cleanCaption);
-                }
-
-                // Send notification about image generation
-                Telegram::sendChatAction($this->user->telegram_chat_id, 'upload_photo');
-                Telegram::sendMessage($this->user->telegram_chat_id, "✨ Generating your image... Please wait~");
-
-                // Save placeholder message to DB
-                $message = Message::create([
-                    'user_id' => $this->user->id,
-                    'persona_id' => $this->persona->id,
-                    'sender_type' => 'bot',
-                    'content' => $cleanCaption ?: '[Image Generating...]',
-                    'image_path' => null,
-                ]);
-
-                // Dispatch async image generation job
-                \App\Jobs\GenerateImage::dispatch(
-                    $message->id,
-                    $this->persona->id,
-                    $imageDescription,
-                    $this->user->telegram_chat_id
-                );
-
-                Log::info('ProcessChatResponse: Dispatched async image generation', [
-                    'message_id' => $message->id,
-                    'persona_id' => $this->persona->id,
-                    'description' => $imageDescription,
-                ]);
-
-                return;
-            }
-
-            // Standard image URL (already generated)
             // Send "Uploading Photo" action
             Telegram::sendChatAction($this->user->telegram_chat_id, 'upload_photo');
 

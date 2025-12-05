@@ -616,6 +616,9 @@ PROMPT;
     public function generateImage(string $prompt, Persona $persona): ?string
     {
         try {
+            // Extend execution timeout for image generation (KieAi can take 30-120 seconds)
+            set_time_limit(180);
+            
             // Build the scene description with persona's physical traits
             $enhancedPrompt = $this->buildImagePrompt($prompt, $persona);
 
@@ -656,15 +659,24 @@ PROMPT;
 
         $imageDescription = trim($matches[1]);
 
-        Log::info('GeminiBrainService: Image generation requested (will be queued)', [
+        Log::info('GeminiBrainService: Image generation requested in response', [
             'description' => $imageDescription,
-            'persona_id' => $persona->id,
         ]);
 
-        // Replace with special pending tag - ProcessChatResponse will dispatch async job
+        // Generate image synchronously with extended timeout
+        $imageUrl = $this->generateImage($imageDescription, $persona);
+
+        if ($imageUrl) {
+            return preg_replace(
+                '/\[GENERATE_IMAGE:\s*.+?\]/i',
+                "[IMAGE: {$imageUrl}]",
+                $textResponse
+            );
+        }
+
         return preg_replace(
             '/\[GENERATE_IMAGE:\s*.+?\]/i',
-            "[IMAGE: pending|{$imageDescription}]",
+            '[Failed to generate image]',
             $textResponse
         );
     }
