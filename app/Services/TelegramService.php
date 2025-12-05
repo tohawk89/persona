@@ -192,6 +192,9 @@ class TelegramService
     public function sendPhoto(string|int $chatId, string $photo, ?string $caption = null, ?string $botToken = null, array $options = []): bool
     {
         try {
+            $localPath = null;
+            $isFile = false;
+
             // Convert URL to local file path for Telegram upload
             if (filter_var($photo, FILTER_VALIDATE_URL)) {
                 // Extract the path from URL
@@ -211,7 +214,7 @@ class TelegramService
                 }
 
                 if (file_exists($localPath)) {
-                    $photo = \Telegram\Bot\FileUpload\InputFile::create($localPath);
+                    $isFile = true;
                 } else {
                     Log::error('TelegramService: Photo file not found', [
                         'url' => $photo,
@@ -223,24 +226,44 @@ class TelegramService
                     return false;
                 }
             } elseif (file_exists($photo)) {
-                // For local file paths, use InputFile
-                $photo = \Telegram\Bot\FileUpload\InputFile::create($photo);
-            }
-            // Otherwise assume it's a file_id (string from previous upload)
-
-            $params = array_merge([
-                'chat_id' => $chatId,
-                'photo' => $photo,
-            ], $options);
-
-            if ($caption) {
-                $params['caption'] = $caption;
-                $params['parse_mode'] = 'HTML';
+                // For local file paths
+                $localPath = $photo;
+                $isFile = true;
             }
 
-            // CRITICAL: Use instance token, not Facade (which always uses default bot)
             $apiUrl = $this->getApiUrl($botToken);
-            $response = Http::post("{$apiUrl}/sendPhoto", $params);
+
+            // Build multipart form data for file upload
+            if ($isFile) {
+                $multipart = [
+                    ['name' => 'chat_id', 'contents' => (string) $chatId],
+                    ['name' => 'photo', 'contents' => fopen($localPath, 'r'), 'filename' => basename($localPath)],
+                ];
+
+                if ($caption) {
+                    $multipart[] = ['name' => 'caption', 'contents' => $caption];
+                    $multipart[] = ['name' => 'parse_mode', 'contents' => 'HTML'];
+                }
+
+                foreach ($options as $key => $value) {
+                    $multipart[] = ['name' => $key, 'contents' => is_array($value) ? json_encode($value) : (string) $value];
+                }
+
+                $response = Http::asMultipart()->post("{$apiUrl}/sendPhoto", $multipart);
+            } else {
+                // For file_id or URL (string), use regular POST
+                $params = array_merge([
+                    'chat_id' => $chatId,
+                    'photo' => $photo,
+                ], $options);
+
+                if ($caption) {
+                    $params['caption'] = $caption;
+                    $params['parse_mode'] = 'HTML';
+                }
+
+                $response = Http::post("{$apiUrl}/sendPhoto", $params);
+            }
 
             if (!$response->successful()) {
                 throw new \Exception($response->json()['description'] ?? 'Unknown error');
@@ -248,7 +271,7 @@ class TelegramService
 
             Log::info('TelegramService: Photo sent', [
                 'chat_id' => $chatId,
-                'photo' => is_string($photo) ? substr($photo, 0, 50) : 'InputFile object',
+                'photo' => $isFile ? basename($localPath) : substr($photo, 0, 50),
                 'using_custom_token' => $botToken !== null,
                 'token_prefix' => substr($this->getToken($botToken), 0, 10) . '...',
             ]);
@@ -276,6 +299,9 @@ class TelegramService
     public function sendVoice(string|int $chatId, string $voice, ?string $botToken = null, array $options = []): bool
     {
         try {
+            $localPath = null;
+            $isFile = false;
+
             // Convert URL to local file path for Telegram upload (same logic as sendPhoto)
             if (filter_var($voice, FILTER_VALIDATE_URL)) {
                 // Extract the path from URL
@@ -295,7 +321,7 @@ class TelegramService
                 }
 
                 if (file_exists($localPath)) {
-                    $voice = \Telegram\Bot\FileUpload\InputFile::create($localPath);
+                    $isFile = true;
                 } else {
                     Log::error('TelegramService: Voice file not found', [
                         'url' => $voice,
@@ -307,19 +333,34 @@ class TelegramService
                     return false;
                 }
             } elseif (file_exists($voice)) {
-                // For local file paths, use InputFile
-                $voice = \Telegram\Bot\FileUpload\InputFile::create($voice);
+                // For local file paths
+                $localPath = $voice;
+                $isFile = true;
             }
-            // Otherwise assume it's a file_id (string from previous upload)
 
-            $params = array_merge([
-                'chat_id' => $chatId,
-                'voice' => $voice,
-            ], $options);
-
-            // CRITICAL: Use instance token, not Facade (which always uses default bot)
             $apiUrl = $this->getApiUrl($botToken);
-            $response = Http::post("{$apiUrl}/sendVoice", $params);
+
+            // Build multipart form data for file upload
+            if ($isFile) {
+                $multipart = [
+                    ['name' => 'chat_id', 'contents' => (string) $chatId],
+                    ['name' => 'voice', 'contents' => fopen($localPath, 'r'), 'filename' => basename($localPath)],
+                ];
+
+                foreach ($options as $key => $value) {
+                    $multipart[] = ['name' => $key, 'contents' => is_array($value) ? json_encode($value) : (string) $value];
+                }
+
+                $response = Http::asMultipart()->post("{$apiUrl}/sendVoice", $multipart);
+            } else {
+                // For file_id or URL (string), use regular POST
+                $params = array_merge([
+                    'chat_id' => $chatId,
+                    'voice' => $voice,
+                ], $options);
+
+                $response = Http::post("{$apiUrl}/sendVoice", $params);
+            }
 
             if (!$response->successful()) {
                 throw new \Exception($response->json()['description'] ?? 'Unknown error');
@@ -327,7 +368,7 @@ class TelegramService
 
             Log::info('TelegramService: Voice message sent', [
                 'chat_id' => $chatId,
-                'voice' => is_string($voice) ? substr($voice, 0, 50) : 'InputFile object',
+                'voice' => $isFile ? basename($localPath) : substr($voice, 0, 50),
                 'using_custom_token' => $botToken !== null,
                 'token_prefix' => substr($this->getToken($botToken), 0, 10) . '...',
             ]);
