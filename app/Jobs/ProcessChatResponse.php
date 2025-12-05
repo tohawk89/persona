@@ -81,9 +81,14 @@ class ProcessChatResponse implements ShouldQueue, ShouldBeUnique
             $lock = \Illuminate\Support\Facades\Cache::lock($lockKey, 10);
 
             if (!$lock->get()) {
-                Log::info('ProcessChatResponse: Another instance is processing, skipping', [
+                // Brain is busy - requeue job to retry in 5 seconds
+                // This ensures no messages are dropped during rapid-fire typing
+                Log::info('ProcessChatResponse: Brain busy, requeueing job', [
                     'user_id' => $this->user->id,
+                    'persona_id' => $persona->id,
+                    'retry_in' => '5 seconds',
                 ]);
+                $this->release(5);
                 return;
             }
 
