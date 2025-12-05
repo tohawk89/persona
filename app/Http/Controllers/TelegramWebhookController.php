@@ -165,9 +165,9 @@ class TelegramWebhookController extends Controller
             // STEP 6: Final Persona Resolution (for System Bot)
             if (!$persona) {
                 // System bot: find user's active persona
-                $persona = $user->personas()->where('is_active', true)->first();
+                $activePersonas = $user->personas()->where('is_active', true)->get();
 
-                if (!$persona) {
+                if ($activePersonas->isEmpty()) {
                     Log::warning('TelegramWebhookController: No active persona found for user', [
                         'user_id' => $user->id,
                         'chat_id' => $chatId,
@@ -176,6 +176,16 @@ class TelegramWebhookController extends Controller
                     Telegram::sendMessage($chatId, 'Please create and activate a persona first via the dashboard.', $botToken);
                     return response()->json(['status' => 'ignored', 'reason' => 'No active persona']);
                 }
+
+                // If multiple active personas, prefer the one without a dedicated bot token (uses system bot)
+                $persona = $activePersonas->firstWhere('telegram_bot_token', null) ?? $activePersonas->first();
+
+                Log::info('TelegramWebhookController: Using system bot for persona', [
+                    'persona_id' => $persona->id,
+                    'persona_name' => $persona->name,
+                    'total_active' => $activePersonas->count(),
+                    'has_dedicated_token' => $persona->telegram_bot_token !== null,
+                ]);
             }
 
             // STEP 7: UX Indicator (CRITICAL - Prevent "Ghost" silence)

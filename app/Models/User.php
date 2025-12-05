@@ -39,11 +39,20 @@ class User extends Authenticatable
     ];
 
     /**
-     * Get the persona for the user.
+     * Get the primary/default persona for the user.
+     * Returns the first active persona, or any persona if none active.
      */
     public function persona(): HasOne
     {
-        return $this->hasOne(Persona::class);
+        return $this->hasOne(Persona::class)->where('is_active', true)->latestOfMany();
+    }
+
+    /**
+     * Get all personas for the user (supports multiple personas per user).
+     */
+    public function personas(): HasMany
+    {
+        return $this->hasMany(Persona::class);
     }
 
     /**
