@@ -12,10 +12,27 @@ class TelegramService
     private string $botToken;
     private string $apiUrl;
 
-    public function __construct()
+    public function __construct(?string $token = null)
     {
-        $this->botToken = config('telegram.bots.default.token');
+        $this->botToken = $token ?? config('telegram.bots.default.token');
         $this->apiUrl = "https://api.telegram.org/bot{$this->botToken}";
+    }
+
+    /**
+     * Dynamically set the bot token for multi-bot support.
+     * This allows switching between different bot tokens on the fly.
+     *
+     * @param string $token The bot token to use
+     * @return void
+     */
+    public function setToken(string $token): void
+    {
+        $this->botToken = $token;
+        $this->apiUrl = "https://api.telegram.org/bot{$token}";
+
+        Log::info('TelegramService: Bot token updated', [
+            'token_prefix' => substr($token, 0, 10) . '...',
+        ]);
     }
 
     /**
@@ -107,7 +124,7 @@ class TelegramService
                 }
 
                 // Send typing action before each message
-                $this->sendChatAction($chatId, 'typing', $botToken);
+                $this->sendChatAction($chatId, 'typing');
                 sleep(1); // Typing delay
 
                 // Check if part contains [IMAGE:] tag

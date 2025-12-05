@@ -67,6 +67,15 @@ class ProcessChatResponse implements ShouldQueue, ShouldBeUnique
                 return;
             }
 
+            // MULTI-BOT SUPPORT: Set the correct bot token if provided
+            if ($this->botToken) {
+                Telegram::setToken($this->botToken);
+                Log::info('ProcessChatResponse: Using custom bot token', [
+                    'persona_id' => $persona->id,
+                    'token_prefix' => substr($this->botToken, 0, 10) . '...',
+                ]);
+            }
+
             // STEP 1: Atomic Lock (Prevent concurrent processing)
             $lockKey = "processing_chat_{$this->user->id}_{$persona->id}";
             $lock = \Illuminate\Support\Facades\Cache::lock($lockKey, 10);
@@ -244,7 +253,7 @@ class ProcessChatResponse implements ShouldQueue, ShouldBeUnique
             $imageUrl = trim($imageMatch[1]);
 
             // Send "Uploading Photo" action
-            Telegram::sendChatAction($this->user->telegram_chat_id, 'upload_photo', $this->botToken);
+            Telegram::sendChatAction($this->user->telegram_chat_id, 'upload_photo');
 
             // Clean caption: remove <SPLIT> tags (they're for text messages only)
             $cleanCaption = $textPart ? str_replace(['<SPLIT>', '<split>'], '', $textPart) : null;
@@ -253,8 +262,7 @@ class ProcessChatResponse implements ShouldQueue, ShouldBeUnique
             Telegram::sendPhoto(
                 $this->user->telegram_chat_id,
                 $imageUrl,
-                $cleanCaption,
-                $this->botToken
+                $cleanCaption
             );
 
             // CRITICAL: Save bot message with image to DB
@@ -272,9 +280,9 @@ class ProcessChatResponse implements ShouldQueue, ShouldBeUnique
             $audioUrl = trim($audioMatch[1]);
 
             // Send "Record Voice" action
-            Telegram::sendChatAction($this->user->telegram_chat_id, 'record_voice', $this->botToken);
+            Telegram::sendChatAction($this->user->telegram_chat_id, 'record_voice');
 
-            Telegram::sendVoice($this->user->telegram_chat_id, $audioUrl, $this->botToken);
+            Telegram::sendVoice($this->user->telegram_chat_id, $audioUrl);
 
             // CRITICAL: Save bot message with voice to DB
             Message::create([
@@ -299,7 +307,7 @@ class ProcessChatResponse implements ShouldQueue, ShouldBeUnique
                 }
 
                 // Send typing indicator before each message
-                Telegram::sendChatAction($this->user->telegram_chat_id, 'typing', $this->botToken);
+                Telegram::sendChatAction($this->user->telegram_chat_id, 'typing');
 
                 // Calculate human-like delay based on message length
                 // Formula: 0.05 seconds per character, capped between 1-4 seconds
@@ -307,7 +315,7 @@ class ProcessChatResponse implements ShouldQueue, ShouldBeUnique
                 sleep((int) $delay);
 
                 // Send the message part
-                Telegram::sendMessage($this->user->telegram_chat_id, $part, $this->botToken);
+                Telegram::sendMessage($this->user->telegram_chat_id, $part);
 
                 // CRITICAL: Save each part to DB for context continuity
                 Message::create([
@@ -336,11 +344,11 @@ class ProcessChatResponse implements ShouldQueue, ShouldBeUnique
                     continue;
                 }
 
-                Telegram::sendChatAction($this->user->telegram_chat_id, 'typing', $this->botToken);
+                Telegram::sendChatAction($this->user->telegram_chat_id, 'typing');
                 $delay = min(max(strlen($part) * 0.05, 1), 4);
                 sleep((int) $delay);
 
-                Telegram::sendMessage($this->user->telegram_chat_id, $part, $this->botToken);
+                Telegram::sendMessage($this->user->telegram_chat_id, $part);
 
                 Message::create([
                     'user_id' => $this->user->id,
