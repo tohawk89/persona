@@ -238,11 +238,19 @@ class TelegramService
                 $params['parse_mode'] = 'HTML';
             }
 
-            Telegram::sendPhoto($params);
+            // CRITICAL: Use instance token, not Facade (which always uses default bot)
+            $apiUrl = $this->getApiUrl($botToken);
+            $response = Http::post("{$apiUrl}/sendPhoto", $params);
+
+            if (!$response->successful()) {
+                throw new \Exception($response->json()['description'] ?? 'Unknown error');
+            }
 
             Log::info('TelegramService: Photo sent', [
                 'chat_id' => $chatId,
                 'photo' => is_string($photo) ? substr($photo, 0, 50) : 'InputFile object',
+                'using_custom_token' => $botToken !== null,
+                'token_prefix' => substr($this->getToken($botToken), 0, 10) . '...',
             ]);
 
             return true;
@@ -309,11 +317,19 @@ class TelegramService
                 'voice' => $voice,
             ], $options);
 
-            Telegram::sendVoice($params);
+            // CRITICAL: Use instance token, not Facade (which always uses default bot)
+            $apiUrl = $this->getApiUrl($botToken);
+            $response = Http::post("{$apiUrl}/sendVoice", $params);
+
+            if (!$response->successful()) {
+                throw new \Exception($response->json()['description'] ?? 'Unknown error');
+            }
 
             Log::info('TelegramService: Voice message sent', [
                 'chat_id' => $chatId,
                 'voice' => is_string($voice) ? substr($voice, 0, 50) : 'InputFile object',
+                'using_custom_token' => $botToken !== null,
+                'token_prefix' => substr($this->getToken($botToken), 0, 10) . '...',
             ]);
 
             return true;
