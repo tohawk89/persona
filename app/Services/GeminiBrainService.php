@@ -163,6 +163,13 @@ PROMPT;
                 ->last();
             $userMessageText = $latestUserMessage?->content ?? '';
 
+            // Log which persona we're generating response for
+            Log::info('GeminiBrainService: Generating chat response', [
+                'persona_id' => $persona->id,
+                'persona_name' => $persona->name,
+                'user_message' => substr($userMessageText, 0, 100),
+            ]);
+
             // Use tiered memory loading instead of all tags
             $relevantMemoryTags = $this->getRelevantMemoryTags($persona, $userMessageText);
 
@@ -175,6 +182,12 @@ PROMPT;
 
             // Get current mood for context injection
             $moodContext = $this->getMoodContext($persona);
+
+            // Log memory context to verify correct persona
+            Log::debug('GeminiBrainService: Memory context for persona', [
+                'persona_id' => $persona->id,
+                'memory_preview' => substr($memoryContext, 0, 300),
+            ]);
 
             // Construct the full prompt with media generation instructions and function calling
             $fullPrompt = <<<PROMPT
@@ -618,7 +631,7 @@ PROMPT;
         try {
             // Extend execution timeout for image generation (KieAi can take 30-120 seconds)
             set_time_limit(180);
-            
+
             // Build the scene description with persona's physical traits
             $enhancedPrompt = $this->buildImagePrompt($prompt, $persona);
 
@@ -1718,7 +1731,7 @@ VOICE;
   {$imageGuidance}
 
   HOW TO USE - CHOOSE IMAGE TYPE:";
-            
+
             $imageInstructions .= "
 
   TYPE 1 - SELFIE/PORTRAIT (You are IN the photo):
@@ -1738,7 +1751,7 @@ VOICE;
   1. Vary camera angles: full body, close-up, mirror selfie, wide shot
   2. Location must match conversation context (default to home if neutral)
   3. Vary lighting: natural sunlight, soft morning light, bright indoor
-  
+
   Keep descriptions appropriate - avoid intimate settings.";
 
             $instructions[] = $imageInstructions;
