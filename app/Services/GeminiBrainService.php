@@ -632,6 +632,13 @@ PROMPT;
             // Extend execution timeout for image generation (KieAi can take 30-120 seconds)
             set_time_limit(180);
 
+            // CRITICAL: Log which persona is generating the image
+            Log::info('GeminiBrainService: generateImage called', [
+                'persona_id' => $persona->id,
+                'persona_name' => $persona->name,
+                'prompt' => substr($prompt, 0, 100),
+            ]);
+
             // Build the scene description with persona's physical traits
             $enhancedPrompt = $this->buildImagePrompt($prompt, $persona);
 
@@ -768,6 +775,12 @@ PROMPT;
      */
     private function buildImagePrompt(string $prompt, Persona $persona): string
     {
+        // CRITICAL: Log which persona is building the prompt
+        Log::debug('GeminiBrainService: buildImagePrompt called', [
+            'persona_id' => $persona->id,
+            'persona_name' => $persona->name,
+        ]);
+
         // Sanitize prompt to avoid NSFW flags
         $sanitizedPrompt = $this->sanitizePromptForImageGeneration($prompt);
 
