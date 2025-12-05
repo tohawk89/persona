@@ -59,9 +59,11 @@ class ProcessScheduledEvent implements ShouldQueue
 
                 // Send the generated response (handles both text and image events)
                 // The sendStreamingMessage method will handle [IMAGE:] tags automatically
+                // CRITICAL: Pass persona's bot token for multi-bot support
                 Telegram::sendStreamingMessage(
                     $user->telegram_chat_id,
-                    $generatedResponse
+                    $generatedResponse,
+                    $event->persona->telegram_bot_token
                 );
 
                 // Save the generated message to database for context
