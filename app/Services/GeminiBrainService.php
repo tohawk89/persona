@@ -82,7 +82,10 @@ CONVERSATION HISTORY:
 
 INSTRUCTIONS:
 - Respond naturally as the persona, taking into account the memory context and conversation history.
+
+===== MEDIA GENERATION CAPABILITY (IMPORTANT) =====
 {$mediaInstructions}
+===== END MEDIA GENERATION =====
 
 CRITICAL FORMATTING RULE (MUST FOLLOW):
 - NEVER send walls of text or multiple paragraphs in one message
@@ -185,7 +188,10 @@ CONVERSATION HISTORY:
 
 INSTRUCTIONS:
 - Respond naturally as the persona, taking into account the memory context and conversation history.
+
+===== MEDIA GENERATION CAPABILITY (IMPORTANT) =====
 {$mediaInstructions}
+===== END MEDIA GENERATION =====
 
 CRITICAL FORMATTING RULE (MUST FOLLOW):
 - NEVER send walls of text or multiple paragraphs in one message
@@ -1351,7 +1357,10 @@ PROMPT;
                 'tools' => $tools,
             ];
 
-            Log::info('GeminiBrainService: Calling Gemini with function calling support');
+            Log::info('GeminiBrainService: Calling Gemini with function calling support', [
+                'prompt_length' => strlen($prompt),
+                'has_media_instructions' => str_contains($prompt, '[GENERATE_IMAGE:'),
+            ]);
 
             $httpResponse = Http::timeout(60)->post($url, $payload);
 
@@ -1375,13 +1384,23 @@ PROMPT;
             // Check if response contains a function call
             $parts = $candidate['content']['parts'] ?? [];
             $functionCall = null;
+            $textResponse = '';
 
             foreach ($parts as $part) {
                 if (isset($part['functionCall'])) {
                     $functionCall = $part['functionCall'];
-                    break;
+                }
+                if (isset($part['text'])) {
+                    $textResponse .= $part['text'];
                 }
             }
+
+            // Log the raw response for debugging
+            Log::debug('GeminiBrainService: Raw Gemini response', [
+                'text' => substr($textResponse, 0, 200),
+                'has_function_call' => $functionCall !== null,
+                'has_generate_image_tag' => str_contains($textResponse, '[GENERATE_IMAGE:'),
+            ]);
 
             // CASE A: Function call detected → Execute and recurse
             if ($functionCall && $functionCall['name'] === 'schedule_event') {
@@ -1458,8 +1477,7 @@ PROMPT;
             }
 
             // CASE B: No function call → Return text response
-            $text = $parts[0]['text'] ?? '';
-            return $text;
+            return $textResponse;
 
         } catch (\Exception $e) {
             Log::error('GeminiBrainService: Function calling failed', [
@@ -1682,16 +1700,22 @@ VOICE;
             };
 
             $instructions[] = <<<IMAGE
-- If you want to generate an image, use the tag: [GENERATE_IMAGE: description]
+IMAGE GENERATION - CRITICAL CAPABILITY:
+- You HAVE the ability to generate images - use it when appropriate!
+- When user says: "selfie", "send photo", "picture", "show me" → RESPOND WITH TEXT + [GENERATE_IMAGE:...] TAG
+- Format: [GENERATE_IMAGE: description]
   {$imageGuidance}
+- The image will be generated and sent automatically - you just need to include the tag
 
-  CRITICAL: DECIDE THE IMAGE TYPE FIRST:
+  HOW TO USE - CHOOSE IMAGE TYPE:
 
   TYPE 1 - SELFIE/PORTRAIT (You are IN the photo):
-  - Use when: User asks "send me a selfie", "show me your outfit", "what do you look like", or you want to share yourself
-  - Format: [GENERATE_IMAGE: SELFIE: description]
-  - Example: [GENERATE_IMAGE: SELFIE: Drinking coffee at a café table]
-  - Example: [GENERATE_IMAGE: SELFIE: Full body outfit check in a bright room]
+  - WHEN TO USE: User explicitly requests "selfie", "photo of you", "show yourself", "what do you look like"
+  - THIS IS MANDATORY - if user asks for your photo, YOU MUST include the tag
+  - Format: [GENERATE_IMAGE: SELFIE: detailed description]
+  - Example user: "send me a selfie" → Your response: "Here you go! 💕 [GENERATE_IMAGE: SELFIE: Smiling happily at camera in bright living room]"
+  - Example: [GENERATE_IMAGE: SELFIE: Full body outfit check in bedroom with natural light]
+  - Example: [GENERATE_IMAGE: SELFIE: Close-up portrait at home]
 
   TYPE 2 - POV/SCENERY (You are NOT in the photo, photographing something):
   - Use when: Sharing what you're seeing (sunset, food, pet, object, view)
