@@ -21,7 +21,9 @@ class PersonaAvatarEditor extends Component
 
     // private const PASSPORT_PROMPT = 'Professional passport photograph headshot, neutral expression, plain off-white background, even studio lighting, sharp focus, photorealistic.';
 
-    private const PASSPORT_PROMPT = 'A photorealistic passport photo. Front-facing view, looking directly at the camera. Neutral expression, symmetrical composition. Plain solid white background. Even, flat studio lighting. Head and shoulders shot. High resolution, 8k.';
+    // private const PASSPORT_PROMPT = 'A photorealistic passport photo. Front-facing view, looking directly at the camera. Neutral expression, symmetrical composition. Plain solid white background. Even, flat studio lighting. Head and shoulders shot. High resolution, 8k.';
+
+    private const PASSPORT_PROMPT = 'A photo-realistic passport-style portrait, front-facing view, looking directly at the camera. The subject has a neutral expression and symmetrical face. The subject is wearing a plain nude-colored tight crop top against a plain white background with soft studio lighting. 8k resolution, sharp focus, high definition. Crucial instruction: If the subject is wearing any head accessories or head coverings, remove them completely and replace them with realistic, suitable hair imagined by the AI.';
 
     protected $rules = [
         'photo' => 'nullable|image|max:10240', // 10MB max
@@ -119,9 +121,10 @@ class PersonaAvatarEditor extends Component
                 'media_id' => $media->id,
             ]);
 
+            $genderText = $this->gender;
             // Use KieAi Edit driver to transform into passport photo
             $imageGenerator = app(ImageGeneratorManager::class)->driver('kie_ai_edit');
-            $avatarUrl = $imageGenerator->editImage($refUrl, self::PASSPORT_PROMPT, $this->persona);
+            $avatarUrl = $imageGenerator->editImage($refUrl, "A {$genderText}. " .self::PASSPORT_PROMPT, $this->persona);
 
             if (!$avatarUrl) {
                 $this->dispatch('error', message: 'Failed to process photo. Please try again.');
