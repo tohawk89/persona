@@ -57,6 +57,8 @@
             "@php artisan config:clear --ansi",
             "@php artisan test"
         ],
+        "lint": "vendor/bin/pint --test",
+        "ci": "composer install --no-interaction --prefer-dist --optimize-autoloader && composer run lint && composer test",
         "post-autoload-dump": [
             "Illuminate\\Foundation\\ComposerScripts::postAutoloadDump",
             "@php artisan package:discover --ansi"
