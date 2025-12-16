@@ -630,7 +630,7 @@ PROMPT;
     {
         try {
             // Extend execution timeout for image generation (KieAi can take 30-120 seconds)
-            set_time_limit(180);
+            set_time_limit(config('services.timeouts.php_execution_limit', 180));
 
             // CRITICAL: Log which persona is generating the image
             Log::info('GeminiBrainService: generateImage called', [
@@ -667,6 +667,56 @@ PROMPT;
     // ============================================================================
     // MEDIA PROCESSING METHODS
     // ============================================================================
+
+    /**
+     * Generate persona-driven loading message for image generation.
+     * Uses AI to create in-character response while preparing image.
+     *
+     * @param Persona $persona
+     * @return string|null Loading message or null if generation fails
+     */
+    public function generateImageLoadingMessage(Persona $persona): ?string
+    {
+        try {
+            $client = Gemini::client(config('services.gemini.api_key'));
+
+            $prompt = <<<PROMPT
+You are {$persona->name}. The user just asked you to send a photo/selfie.
+You're about to take the photo, but it will take a moment to prepare.
+
+Generate a SHORT, in-character response (1-2 sentences) that:
+- Acknowledges you'll send the photo
+- Tells them to wait briefly
+- Matches your personality
+
+Your system prompt: {$persona->system_prompt}
+
+Examples:
+- "Wait, just open my camera! 📸"
+- "Give me a sec, need to find good lighting 💕"
+- "Tunggu sekejap, nak ambil angle cantik dulu!"
+
+Response (keep it SHORT and natural):
+PROMPT;
+
+            $response = $client->geminiFlash()->generateContent($prompt);
+            $loadingText = trim($response->text());
+
+            Log::info('GeminiBrainService: Generated image loading message', [
+                'persona_id' => $persona->id,
+                'message' => $loadingText,
+            ]);
+
+            return $loadingText;
+        } catch (\Exception $e) {
+            Log::error('GeminiBrainService: Failed to generate loading message', [
+                'error' => $e->getMessage(),
+            ]);
+
+            // Fallback to generic message
+            return "Wait, just open my camera! 📸";
+        }
+    }
 
     /**
      * Process image generation tags in the response.

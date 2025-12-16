@@ -67,4 +67,15 @@ return [
         ],
     ],
 
+    'timeouts' => [
+        // Time window (in minutes) to consider a user as "actively chatting"
+        'active_conversation_window' => env('ACTIVE_CONVERSATION_WINDOW', 15),
+
+        // Time to reschedule events (in minutes) when user is active
+        'event_reschedule_delay' => env('EVENT_RESCHEDULE_DELAY', 30),
+
+        // PHP execution timeout (in seconds) for long-running operations
+        'php_execution_limit' => env('PHP_EXECUTION_LIMIT', 180),
+    ],
+
 ];

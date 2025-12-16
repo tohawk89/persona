@@ -199,6 +199,21 @@ class ProcessChatResponse implements ShouldQueue, ShouldBeUnique
                     ]);
                 }
 
+                // STEP 4.7: Send loading feedback if image generation detected
+                if (preg_match('/\[GENERATE_IMAGE:\s*(.+?)\]/i', $response)) {
+                    $loadingMessage = GeminiBrain::generateImageLoadingMessage($persona);
+
+                    if ($loadingMessage) {
+                        Telegram::sendChatAction($this->user->telegram_chat_id, 'typing', $this->botToken);
+                        Telegram::sendMessage($this->user->telegram_chat_id, $loadingMessage, $this->botToken);
+
+                        Log::info('ProcessChatResponse: Sent image loading feedback', [
+                            'user_id' => $this->user->id,
+                            'message' => $loadingMessage,
+                        ]);
+                    }
+                }
+
                 // STEP 5: Send response to Telegram
                 // NOTE: sendResponseToTelegram() handles saving to DB (CRITICAL for context)
                 $this->sendResponseToTelegram($response);

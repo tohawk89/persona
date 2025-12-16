@@ -33,8 +33,15 @@ class PersonaGallery extends Component
 
     public function previewMedia($mediaId)
     {
+        // Validate media belongs to this persona
+        $media = Media::find($mediaId);
+
+        if (!$media || $media->model_id !== $this->persona->id || $media->model_type !== Persona::class) {
+            $this->dispatch('show-error', message: 'Invalid media selected.');
+            return;
+        }
+
         $this->previewMediaId = $mediaId;
-        $this->dispatch('open-preview-modal');
     }
 
     public function closePreview()

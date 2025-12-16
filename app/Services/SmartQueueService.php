@@ -10,14 +10,24 @@ use Illuminate\Support\Facades\Log;
 class SmartQueueService
 {
     /**
-     * Time window (in minutes) to consider a user as "actively chatting"
+     * Get the active chat window in minutes from config.
+     *
+     * @return int
      */
-    private const ACTIVE_CHAT_WINDOW_MINUTES = 15;
+    private function getActiveChatWindowMinutes(): int
+    {
+        return config('services.timeouts.active_conversation_window', 15);
+    }
 
     /**
-     * Time to reschedule (in minutes) if user is active
+     * Get the reschedule delay in minutes from config.
+     *
+     * @return int
      */
-    private const RESCHEDULE_DELAY_MINUTES = 30;
+    private function getRescheduleDelayMinutes(): int
+    {
+        return config('services.timeouts.event_reschedule_delay', 30);
+    }
 
     /**
      * Check if a user is currently in an active conversation.
@@ -31,7 +41,7 @@ class SmartQueueService
             return false;
         }
 
-        $threshold = Carbon::now()->subMinutes(self::ACTIVE_CHAT_WINDOW_MINUTES);
+        $threshold = Carbon::now()->subMinutes($this->getActiveChatWindowMinutes());
         $isActive = Carbon::parse($user->last_interaction_at)->isAfter($threshold);
 
         Log::debug('SmartQueueService: Checking user activity', [
@@ -77,12 +87,12 @@ class SmartQueueService
      * Reschedule an event by adding delay minutes to its scheduled time.
      *
      * @param EventSchedule $event
-     * @param int|null $delayMinutes If null, uses default RESCHEDULE_DELAY_MINUTES
+     * @param int|null $delayMinutes If null, uses config default
      * @return void
      */
     public function rescheduleEvent(EventSchedule $event, ?int $delayMinutes = null): void
     {
-        $delayMinutes = $delayMinutes ?? self::RESCHEDULE_DELAY_MINUTES;
+        $delayMinutes = $delayMinutes ?? $this->getRescheduleDelayMinutes();
 
         $newScheduledAt = Carbon::parse($event->scheduled_at)
             ->addMinutes($delayMinutes);
