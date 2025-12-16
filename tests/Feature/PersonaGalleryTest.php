@@ -77,7 +77,7 @@ class PersonaGalleryTest extends TestCase
 
         $this->persona->addMedia(UploadedFile::fake()->image('avatar.jpg'))
             ->toMediaCollection('avatar');
-        
+
         $this->persona->addMedia(UploadedFile::fake()->image('generated.jpg'))
             ->toMediaCollection('generated_images');
 

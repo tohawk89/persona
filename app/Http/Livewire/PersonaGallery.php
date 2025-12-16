@@ -52,8 +52,8 @@ class PersonaGallery extends Component
 
         $mediaItems = $query->latest()->paginate($this->perPage);
 
-        $previewMedia = $this->previewMediaId 
-            ? Media::find($this->previewMediaId) 
+        $previewMedia = $this->previewMediaId
+            ? Media::find($this->previewMediaId)
             : null;
 
         return view('livewire.persona-gallery', [
