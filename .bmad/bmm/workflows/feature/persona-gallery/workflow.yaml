@@ -1,0 +1,60 @@
+---
+name: persona-gallery
+description: BMAD workflow to implement STORY-001: Persona Gallery
+workflowType: feature
+storyId: STORY-001
+user_name: Nazar
+date: 2025-12-16
+communication_language: English
+artifacts_folder: '{project-root}/.bmad/artifacts/STORY-001'
+stepsCompleted: []
+steps:
+  - id: step-01-ui-spec
+    name: Finalize UI spec and wireframes
+    owner: Sally
+    run: manual
+    outputs:
+      - path: '{project-root}/.bmad/artifacts/STORY-001/step-01-ui-spec'
+  - id: step-02-implementation
+    name: Scaffold Livewire component and Blade view
+    owner: Amelia
+    run: manual
+    outputs:
+      - path: '{project-root}/.bmad/artifacts/STORY-001/step-02-implementation'
+  - id: step-03-conversions
+    name: Add Persona media conversions
+    owner: Barry
+    run: manual
+    outputs:
+      - path: '{project-root}/.bmad/artifacts/STORY-001/step-03-conversions'
+  - id: step-04-route
+    name: Register route and link from dashboard
+    owner: Amelia
+    run: manual
+    outputs:
+      - path: '{project-root}/.bmad/artifacts/STORY-001/step-04-route'
+  - id: step-05-tests
+    name: Add integration tests
+    owner: Murat
+    run: manual
+    outputs:
+      - path: '{project-root}/.bmad/artifacts/STORY-001/step-05-tests'
+  - id: step-06-docs
+    name: Update docs and README
+    owner: Paige
+    run: manual
+    outputs:
+      - path: '{project-root}/.bmad/artifacts/STORY-001/step-06-docs'
+  - id: step-07-demo
+    name: Demo and sign-off
+    owner: John
+    run: manual
+    outputs:
+      - path: '{project-root}/.bmad/artifacts/STORY-001/step-07-demo'
+  - id: step-08-validate
+    name: Validate BMAD workflow
+    owner: Bob
+    run: manual
+    outputs:
+      - path: '{project-root}/.bmad/artifacts/STORY-001/validation-report.md'
+---

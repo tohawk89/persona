@@ -133,7 +133,7 @@ class TelegramPolling extends Command
 
             // Resolve persona (CRITICAL: TelegramPolling needs persona resolution logic)
             $persona = $user->personas()->where('is_active', true)->first();
-            
+
             if (!$persona) {
                 $this->warn('No active persona found for user. Skipping message.');
                 Telegram::sendMessage($data['chat_id'], 'Please create and activate a persona via the dashboard first.');

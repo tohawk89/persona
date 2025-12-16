@@ -54,6 +54,16 @@
                 Logs
             </a>
 
+            <!-- Gallery Tab -->
+            <a href="{{ route('persona.gallery', $persona) }}"
+               wire:navigate
+               class="inline-flex items-center px-1 pt-4 pb-4 border-b-2 text-sm font-medium whitespace-nowrap {{ request()->routeIs('persona.gallery') ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300' }}">
+                <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7h4l3-4 3 4h4v13H3z"></path>
+                </svg>
+                Gallery
+            </a>
+
             <!-- Test Tab -->
             <a href="{{ route('persona.test', $persona) }}"
                wire:navigate

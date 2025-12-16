@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Spatie\MediaLibrary\HasMedia;
@@ -11,7 +12,7 @@ use Spatie\MediaLibrary\MediaCollections\Models\Media;
 
 class Persona extends Model implements HasMedia
 {
-    use InteractsWithMedia;
+    use InteractsWithMedia, HasFactory;
 
     protected $fillable = [
         'user_id',
@@ -59,13 +60,32 @@ class Persona extends Model implements HasMedia
     public function registerMediaCollections(): void
     {
         $this->addMediaCollection('reference_image')
+            ->useDisk('public')
             ->singleFile();
 
         $this->addMediaCollection('avatar')
+            ->useDisk('public')
             ->singleFile();
 
-        $this->addMediaCollection('generated_images');
+        $this->addMediaCollection('generated_images')
+            ->useDisk('public');
 
-        $this->addMediaCollection('voice_notes');
+        $this->addMediaCollection('voice_notes')
+            ->useDisk('public');
+    }
+
+    public function registerMediaConversions(Media $media = null): void
+    {
+        $this->addMediaConversion('thumb')
+            ->width(400)
+            ->height(300)
+            ->sharpen(10)
+            ->nonQueued();
+
+        $this->addMediaConversion('large')
+            ->width(1200)
+            ->height(900)
+            ->sharpen(10)
+            ->nonQueued();
     }
 }
