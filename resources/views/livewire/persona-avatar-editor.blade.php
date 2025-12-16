@@ -1,6 +1,11 @@
-<div>
-    <!-- Mode Toggle -->
-    <div class="mb-6">
+<div class="py-12">
+    <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
+        <div class="bg-white dark:bg-gray-800 overflow-hidden shadow-sm sm:rounded-lg">
+            <div class="p-6 text-gray-900 dark:text-gray-100">
+                <h2 class="text-2xl font-bold mb-6">Avatar Editor</h2>
+
+                <!-- Mode Toggle -->
+                <div class="mb-6">
                     <div class="flex space-x-4 border-b border-gray-200 dark:border-gray-700">
                         <button
                             wire:click="$set('mode', 'upload')"
@@ -234,4 +239,7 @@
             }, 500);
         });
     </script>
+            </div>
+        </div>
+    </div>
 </div>
