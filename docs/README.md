@@ -37,6 +37,13 @@ Sprint planning documents, epics, and stories.
 
 - [Sprint Artifacts](sprint-artifacts/) - Current and historical sprint deliverables
 
+### 📋 Project Management
+Track bugs, technical debt, and good first issues.
+
+- [Bug Catalog](project/BUGS.md) - Known issues with severity, impact, and status
+- [Technical Debt](project/TECHNICAL_DEBT.md) - Architecture assessment and remediation roadmap
+- [Good First Issues](project/GOOD_FIRST_ISSUES.md) - Beginner-friendly tasks to get started
+
 ## 🚀 Quick Start
 
 New to the project? Start here:

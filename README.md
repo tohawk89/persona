@@ -168,8 +168,8 @@ Comprehensive documentation is available in the [`docs/`](docs/) directory:
 - **[Image Generator Drivers](docs/reference/IMAGE_GENERATOR_DRIVERS.md)** - Image generation options
 
 ### Project Management
-- **[Bug Catalog](BUGS.md)** - Known issues and status
-- **[Technical Debt](TECHNICAL_DEBT.md)** - Architecture assessment and roadmap
+- **[Bug Catalog](docs/project/BUGS.md)** - Known issues and status
+- **[Technical Debt](docs/project/TECHNICAL_DEBT.md)** - Architecture assessment and roadmap
 
 ---
 
@@ -198,7 +198,7 @@ New to the project? Start here:
 4. **[DEBT-006]** Extract timeout constants to config (Easy refactoring)
 5. **[TEST-001]** Add basic service layer test (Learn the codebase)
 
-See [BUGS.md](BUGS.md) and [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md) for full details.
+See [BUGS.md](docs/project/BUGS.md) and [TECHNICAL_DEBT.md](docs/project/TECHNICAL_DEBT.md) for full details.
 
 ---
 
@@ -224,14 +224,14 @@ See [docs/guides/testing-guide.md](docs/guides/testing-guide.md) for testing bes
 
 ## 🚀 Deployment
 
-⚠️ **Not production-ready yet.** See [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md) for blockers:
+⚠️ **Not production-ready yet.** See [TECHNICAL_DEBT.md](docs/project/TECHNICAL_DEBT.md) for blockers:
 
 - Test coverage too low (<5%)
 - Database queue not scalable
 - No CI/CD pipeline
 - No monitoring/error tracking
 
-**Roadmap to Production:** 3-phase plan in [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md#15-remediation-roadmap)
+**Roadmap to Production:** 3-phase plan in [TECHNICAL_DEBT.md](docs/project/TECHNICAL_DEBT.md#15-remediation-roadmap)
 
 ---
 
@@ -271,8 +271,8 @@ This project is open-sourced software licensed under the [MIT license](LICENSE).
 
 - **Documentation:** [docs/](docs/)
 - **Contributing:** [CONTRIBUTING.md](CONTRIBUTING.md)
-- **Bug Reports:** [BUGS.md](BUGS.md)
-- **Technical Debt:** [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md)
+- **Bug Reports:** [BUGS.md](docs/project/BUGS.md)
+- **Technical Debt:** [TECHNICAL_DEBT.md](docs/project/TECHNICAL_DEBT.md)
 - **Issue Tracker:** [GitHub Issues](https://github.com/tohawk89/persona/issues)
 
 ---

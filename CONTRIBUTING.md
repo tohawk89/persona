@@ -618,7 +618,7 @@ New contributors should start with issues labeled `good first issue`:
    - **Description:** Write first test for GeminiBrainService::sanitizePromptForImageGeneration()
    - **File:** Create `tests/Unit/Services/GeminiBrainServiceTest.php`
 
-See [BUGS.md](BUGS.md) and [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md) for detailed descriptions.
+See [BUGS.md](docs/project/BUGS.md) and [TECHNICAL_DEBT.md](docs/project/TECHNICAL_DEBT.md) for detailed descriptions.
 
 ---
 

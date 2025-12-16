@@ -820,8 +820,8 @@ After completing setup:
 
 ### Issue Reporting
 Found a bug? Check:
-1. [`BUGS.md`](../../BUGS.md) - Known issues
-2. [`TECHNICAL_DEBT.md`](../../TECHNICAL_DEBT.md) - Planned improvements
+1. [`BUGS.md`](../project/BUGS.md) - Known issues
+2. [`TECHNICAL_DEBT.md`](../project/TECHNICAL_DEBT.md) - Planned improvements
 
 Report new issues with:
 - Steps to reproduce

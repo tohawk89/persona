@@ -1432,4 +1432,4 @@ Before deploying to production, ensure:
 
 **Last Updated:** December 16, 2025  
 **Maintained By:** Development Team  
-**Related Docs:** [TECHNICAL_DEBT.md](../../TECHNICAL_DEBT.md), [CONTRIBUTING.md](../../CONTRIBUTING.md)
+**Related Docs:** [TECHNICAL_DEBT.md](../project/TECHNICAL_DEBT.md), [CONTRIBUTING.md](../../CONTRIBUTING.md)
