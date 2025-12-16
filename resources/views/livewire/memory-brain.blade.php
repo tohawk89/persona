@@ -2,17 +2,6 @@
     <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
         <div class="bg-white dark:bg-gray-800 overflow-hidden shadow-sm sm:rounded-lg">
             <div class="p-6 text-gray-900 dark:text-gray-100">
-                @if (!Auth::user()->persona)
-                    <div class="mb-6 p-6 bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-lg text-center">
-                        <p class="text-purple-700 dark:text-purple-300 mb-3">
-                            No persona configured. Please set up your persona first to manage memories.
-                        </p>
-                        <a href="{{ route('persona.manager') }}" class="inline-block px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white font-medium rounded-lg transition-colors">
-                            Configure Persona →
-                        </a>
-                    </div>
-                @endif
-
                 <div class="flex justify-between items-center mb-6">
                     <h2 class="text-2xl font-bold">Memory Brain</h2>
                     <button

@@ -4,17 +4,6 @@
             <div class="p-6 text-gray-900 dark:text-gray-100">
                 <h2 class="text-2xl font-bold mb-6">Chat Logs</h2>
 
-                @if (!$messages->count() && !Auth::user()->persona)
-                    <div class="mb-6 p-6 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg text-center">
-                        <p class="text-green-700 dark:text-green-300 mb-3">
-                            No persona configured. Please set up your persona first to view chat logs.
-                        </p>
-                        <a href="{{ route('persona.manager') }}" class="inline-block px-4 py-2 bg-green-600 hover:bg-green-700 text-white font-medium rounded-lg transition-colors">
-                            Configure Persona →
-                        </a>
-                    </div>
-                @endif
-
                 <!-- Chat Messages -->
                 <div class="space-y-4 max-h-[600px] overflow-y-auto">
                     @forelse($messages as $message)

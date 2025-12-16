@@ -9,17 +9,6 @@
                     </span>
                 </div>
 
-                @if (!$events->count() && !Auth::user()->persona)
-                    <div class="mb-6 p-6 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg text-center">
-                        <p class="text-blue-700 dark:text-blue-300 mb-3">
-                            No persona configured. Please set up your persona first to view scheduled events.
-                        </p>
-                        <a href="{{ route('persona.manager') }}" class="inline-block px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors">
-                            Configure Persona →
-                        </a>
-                    </div>
-                @endif
-
                 @if (session()->has('success'))
                     <div class="mb-4 p-4 bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 rounded-lg">
                         {{ session('success') }}

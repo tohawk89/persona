@@ -21,7 +21,7 @@ The admin dashboard provides a comprehensive interface for managing your AI Virt
 ---
 
 ### 2. Persona Manager (`/persona-manager`)
-**Route:** `persona.manager`  
+**Route:** `persona.edit`  
 **Component:** `App\Livewire\PersonaManager`
 
 **Features:**
@@ -162,7 +162,7 @@ php artisan storage:link
 ```php
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::view('dashboard', 'dashboard')->name('dashboard');
-    Route::get('persona-manager', \App\Livewire\PersonaManager::class)->name('persona.manager');
+    Route::get('persona-manager', \App\Livewire\PersonaManager::class)->name('persona.edit');
     Route::get('memory-brain', \App\Livewire\MemoryBrain::class)->name('memory.brain');
     Route::get('schedule-timeline', \App\Livewire\ScheduleTimeline::class)->name('schedule.timeline');
     Route::get('chat-logs', \App\Livewire\ChatLogs::class)->name('chat.logs');
