@@ -72,7 +72,7 @@ Updated models:
 
 ### Documentation
 
-- **SERVICES_README.md** - Comprehensive documentation with:
+- **SERVICES_README.md** (in same folder) - Comprehensive documentation with:
   - API reference for all methods
   - Usage examples
   - Integration patterns
@@ -192,7 +192,7 @@ $events = $brain->generateDailyPlan(
 
 ## 📖 Documentation
 
-Refer to `SERVICES_README.md` for:
+Refer to `SERVICES_README.md` (in same folder) for:
 - Detailed API documentation
 - Complete usage examples
 - Integration patterns

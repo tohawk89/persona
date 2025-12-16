@@ -488,12 +488,12 @@ app/
 ## 📝 Documentation Files
 
 - `README.md` - Project overview
-- `SERVICES_README.md` - Complete API reference
-- `BRAIN_SERVICE_STRUCTURE.md` - Service organization
-- `ARCHITECTURE_REPORT.md` - System design
-- `ADMIN_DASHBOARD_GUIDE.md` - Dashboard features
-- `QUICK_REFERENCE.md` - Common patterns
-- `JIT_QUICK_REFERENCE.md` - Event scheduling
+- `docs/architecture/SERVICES_README.md` - Complete API reference
+- `docs/architecture/BRAIN_SERVICE_STRUCTURE.md` - Service organization
+- `docs/architecture/ARCHITECTURE_REPORT.md` - System design
+- `docs/guides/ADMIN_DASHBOARD_GUIDE.md` - Dashboard features
+- `docs/guides/QUICK_REFERENCE.md` - Common patterns
+- `docs/guides/JIT_QUICK_REFERENCE.md` - Event scheduling
 - `.github/copilot-instructions.md` - AI assistant guide
 
 ---
