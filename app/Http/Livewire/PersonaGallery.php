@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Livewire;
+namespace App\Http\Livewire;
 
 use Livewire\Component;
 use Livewire\WithPagination;
@@ -66,6 +66,6 @@ class PersonaGallery extends Component
         return view('livewire.persona-gallery', [
             'mediaItems' => $mediaItems,
             'previewMedia' => $previewMedia,
-        ])->layout('layouts.persona', ['persona' => $this->persona]);
+        ])->layout('layouts.app');
     }
 }
