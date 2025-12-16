@@ -1,4 +1,7 @@
-<div class="py-12">
+<div>
+    <x-persona-tabs :persona="$persona" />
+
+    <div class="py-12">
     <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
         <div class="bg-white dark:bg-gray-800 overflow-hidden shadow-sm sm:rounded-lg">
             <div class="p-6 text-gray-900 dark:text-gray-100">
@@ -50,26 +53,26 @@
                         @if($message['role'] === 'system')
                             <!-- System Message (Center - Info) -->
                             <div class="flex justify-center">
-                                <div class="max-w-[90%] bg-blue-50 border-l-4 border-blue-500 rounded-lg px-4 py-3 shadow-sm">
-                                    <p class="text-sm text-blue-900 whitespace-pre-wrap font-medium">{{ $message['content'] }}</p>
-                                    <p class="text-xs text-blue-600 mt-1 text-center">{{ $message['timestamp'] }}</p>
+                                <div class="max-w-[90%] bg-blue-50 dark:bg-blue-900 border-l-4 border-blue-500 rounded-lg px-4 py-3 shadow-sm">
+                                    <p class="text-sm text-blue-900 dark:text-blue-100 whitespace-pre-wrap font-medium">{{ $message['content'] }}</p>
+                                    <p class="text-xs text-blue-600 dark:text-blue-300 mt-1 text-center">{{ $message['timestamp'] }}</p>
                                 </div>
                             </div>
                         @elseif($message['role'] === 'user')
-                            <!-- User Message (Right - Blue) -->
+                            <!-- User Message (Right - Indigo) -->
                             <div class="flex justify-end">
                                 <div class="max-w-[70%]">
-                                    <div class="rounded-lg rounded-tr-none px-4 py-3 shadow-sm" style="background-color: #3b82f6;">
-                                        <p class="text-sm whitespace-pre-wrap" style="color: #ffffff;">{{ $message['content'] }}</p>
+                                    <div class="bg-indigo-600 dark:bg-indigo-500 rounded-lg rounded-tr-none px-4 py-3 shadow-sm">
+                                        <p class="text-sm text-white whitespace-pre-wrap">{{ $message['content'] }}</p>
                                     </div>
-                                    <p class="text-xs text-gray-600 mt-1 text-right">{{ $message['timestamp'] }}</p>
+                                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-1 text-right">{{ $message['timestamp'] }}</p>
                                 </div>
                             </div>
                         @else
-                            <!-- Bot Message (Left - Gray) -->
+                            <!-- Bot Message (Left - White/Gray) -->
                             <div class="flex justify-start">
                                 <div class="max-w-[70%]">
-                                    <div class="bg-white border border-gray-200 rounded-lg rounded-tl-none px-4 py-3 shadow-sm">
+                                    <div class="bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg rounded-tl-none px-4 py-3 shadow-sm">
                                         @php
                                             $content = $message['content'];
                                             // Check if content contains image tag
@@ -82,7 +85,7 @@
                                         @endphp
 
                                         @if(trim($textContent))
-                                            <p class="text-sm text-gray-800 whitespace-pre-wrap">{{ trim($textContent) }}</p>
+                                            <p class="text-sm text-gray-800 dark:text-gray-100 whitespace-pre-wrap">{{ trim($textContent) }}</p>
                                         @endif
 
                                         @if(!empty($imageMatches[1]))
@@ -96,12 +99,12 @@
 
                                         @if(!empty($audioMatches[1]))
                                             @foreach($audioMatches[1] as $audioUrl)
-                                                <div class="mt-2 bg-gray-50 border border-gray-300 rounded-lg p-3">
+                                                <div class="mt-2 bg-gray-50 dark:bg-gray-600 border border-gray-300 dark:border-gray-500 rounded-lg p-3">
                                                     <div class="flex items-center gap-2 mb-1">
-                                                        <svg class="w-4 h-4 text-blue-600" fill="currentColor" viewBox="0 0 20 20">
+                                                        <svg class="w-4 h-4 text-indigo-600 dark:text-indigo-400" fill="currentColor" viewBox="0 0 20 20">
                                                             <path d="M18 3a1 1 0 00-1.196-.98l-10 2A1 1 0 006 5v9.114A4.369 4.369 0 005 14c-1.657 0-3 .895-3 2s1.343 2 3 2 3-.895 3-2V7.82l8-1.6v5.894A4.37 4.37 0 0015 12c-1.657 0-3 .895-3 2s1.343 2 3 2 3-.895 3-2V3z"></path>
                                                         </svg>
-                                                        <span class="text-xs font-medium text-gray-600">Voice Note</span>
+                                                        <span class="text-xs font-medium text-gray-700 dark:text-gray-200">Voice Note</span>
                                                     </div>
                                                     <audio controls class="w-full" style="height: 32px;">
                                                         <source src="{{ trim($audioUrl) }}" type="audio/mpeg">
@@ -111,7 +114,7 @@
                                             @endforeach
                                         @endif
                                     </div>
-                                    <p class="text-xs text-gray-500 mt-1">{{ $message['timestamp'] }}</p>
+                                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">{{ $message['timestamp'] }}</p>
                                 </div>
                             </div>
                         @endif
@@ -184,5 +187,6 @@
                 </div>
             </div>
         </div>
+    </div>
     </div>
 </div>
