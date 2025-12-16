@@ -25,7 +25,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('/schedule', \App\Livewire\ScheduleTimeline::class)->name('persona.schedule');
         Route::get('/logs', \App\Livewire\ChatLogs::class)->name('persona.logs');
         Route::get('/test', \App\Livewire\TestChat::class)->name('persona.test');
-        Route::get('/gallery', \App\Http\Livewire\PersonaGallery::class)->name('persona.gallery');
+        Route::get('/gallery', \App\Livewire\PersonaGallery::class)->name('persona.gallery');
 
         // Serve media file (for viewing in gallery)
         Route::get('/media/{media}/view', function (\App\Models\Persona $persona, \Spatie\MediaLibrary\MediaCollections\Models\Media $media, \Illuminate\Http\Request $request) {

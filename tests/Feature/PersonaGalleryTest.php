@@ -33,7 +33,7 @@ class PersonaGalleryTest extends TestCase
             ->get(route('persona.gallery', $this->persona));
 
         $response->assertStatus(200);
-        $response->assertSeeLivewire('app.http.livewire.persona-gallery');
+        $response->assertSeeLivewire('persona-gallery');
     }
 
     /** @test */
