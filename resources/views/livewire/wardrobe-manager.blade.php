@@ -237,7 +237,7 @@
                             <!-- Tags -->
                             <div class="mb-4">
                                 <label class="block text-sm font-medium text-gray-700 mb-1">Tags (Max 10)</label>
-                                
+
                                 <!-- Predefined Tags -->
                                 <div class="mb-3">
                                     <div class="text-xs text-gray-600 mb-2">Predefined Tags:</div>
@@ -492,7 +492,7 @@
             @endif
         </div>
     @endif
-</div>
+
     <!-- Generate Modal -->
     @if($showGenerateModal)
         <div class="fixed inset-0 z-50 overflow-y-auto" aria-labelledby="generate-modal-title" role="dialog" aria-modal="true">
@@ -581,13 +581,15 @@
                     <div class="bg-gray-50 dark:bg-gray-700 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
                         <button type="button"
                                 wire:click="generateWithAI"
-                                :disabled="$isGenerating"
+                                wire:loading.attr="disabled"
+                                wire:target="generateWithAI"
                                 class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-purple-600 text-base font-medium text-white hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 sm:ml-3 sm:w-auto sm:text-sm disabled:opacity-50 disabled:cursor-not-allowed">
                             Generate →
                         </button>
                         <button type="button"
                                 wire:click="closeGenerateModals"
-                                :disabled="$isGenerating"
+                                wire:loading.attr="disabled"
+                                wire:target="generateWithAI"
                                 class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 dark:border-gray-600 shadow-sm px-4 py-2 bg-white dark:bg-gray-800 text-base font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:mt-0 sm:w-auto sm:text-sm disabled:opacity-50 disabled:cursor-not-allowed">
                             Cancel
                         </button>

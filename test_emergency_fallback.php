@@ -46,12 +46,12 @@ echo "   This should trigger auto-generation..." . PHP_EOL;
 
 try {
     $outfit = Wardrobe::getTodaysOutfit($persona, 'daytime');
-    
+
     if (!$outfit) {
         echo "❌ No outfit returned" . PHP_EOL;
         exit(1);
     }
-    
+
     echo "✅ Outfit returned successfully!" . PHP_EOL;
     echo "   ID: {$outfit->id}" . PHP_EOL;
     echo "   Description: {$outfit->description}" . PHP_EOL;
@@ -61,44 +61,44 @@ try {
     echo "   Lower: " . ($outfit->lower_body ?? 'null') . PHP_EOL;
     echo "   Footwear: {$outfit->footwear}" . PHP_EOL;
     echo PHP_EOL;
-    
+
     // Test 3: Verify outfit was saved
     echo "Test 3: Verifying outfit was saved to database..." . PHP_EOL;
     $saved = WardrobeItem::where('persona_id', $persona->id)
         ->where('slot_name', 'casual_daytime')
         ->first();
-    
+
     if (!$saved) {
         echo "❌ Outfit not found in database" . PHP_EOL;
         exit(1);
     }
-    
+
     echo "✅ Outfit saved in database" . PHP_EOL;
     echo "   ID matches: " . ($saved->id === $outfit->id ? 'Yes' : 'No') . PHP_EOL;
     echo "   Is Primary: " . ($saved->is_primary ? 'Yes' : 'No') . PHP_EOL;
     echo PHP_EOL;
-    
+
     // Test 4: Verify daily selection was cached
     echo "Test 4: Verifying daily selection cached..." . PHP_EOL;
     $selection = DailyOutfitSelection::where('persona_id', $persona->id)
         ->where('slot_name', 'casual_daytime')
         ->where('date', now()->toDateString())
         ->first();
-    
+
     if (!$selection) {
         echo "❌ Daily selection not cached" . PHP_EOL;
         exit(1);
     }
-    
+
     echo "✅ Daily selection cached" . PHP_EOL;
     echo "   Outfit ID: {$selection->wardrobe_item_id}" . PHP_EOL;
     echo "   Date: {$selection->date}" . PHP_EOL;
     echo PHP_EOL;
-    
+
     // Test 5: Test image generation with auto-generated outfit
     echo "Test 5: Testing image generation with fallback outfit..." . PHP_EOL;
     echo "   This should use the auto-generated outfit seamlessly" . PHP_EOL;
-    
+
     try {
         // Just get the outfit description for image generation
         $imagePrompt = "SELFIE: smiling at camera in casual outfit";
@@ -109,7 +109,7 @@ try {
     } catch (\Exception $e) {
         echo "❌ Image generation test failed: {$e->getMessage()}" . PHP_EOL;
     }
-    
+
     // Test 6: Check logs for fallback event
     echo "Test 6: Checking logs for fallback event..." . PHP_EOL;
     echo "   Check storage/logs/laravel.log for:" . PHP_EOL;
@@ -117,11 +117,11 @@ try {
     echo "   'WardrobeService: Auto-generated fallback outfit'" . PHP_EOL;
     echo "✅ Logs should contain fallback entries (silent, no user notification)" . PHP_EOL;
     echo PHP_EOL;
-    
+
     // Test 7: Second request should use cached outfit (no re-generation)
     echo "Test 7: Testing cached outfit retrieval..." . PHP_EOL;
     $outfit2 = Wardrobe::getTodaysOutfit($persona, 'daytime');
-    
+
     if ($outfit2->id !== $outfit->id) {
         echo "❌ Different outfit returned (should be same)" . PHP_EOL;
     } else {
@@ -129,14 +129,14 @@ try {
         echo "   No re-generation triggered" . PHP_EOL;
     }
     echo PHP_EOL;
-    
+
     echo "=== All Story 5 Tests Complete! ===" . PHP_EOL;
     echo PHP_EOL . "Cleanup..." . PHP_EOL;
-    
+
     // Delete test outfit
     WardrobeItem::where('persona_id', $persona->id)->delete();
     DailyOutfitSelection::where('persona_id', $persona->id)->delete();
-    
+
     // Restore original outfits
     foreach ($existingOutfits as $original) {
         WardrobeItem::create([
@@ -153,14 +153,14 @@ try {
             'wear_count' => $original->wear_count,
         ]);
     }
-    
+
     echo "✅ Wardrobe restored to original state ({$beforeCount} outfits)" . PHP_EOL;
-    
+
 } catch (\Exception $e) {
     echo "❌ Test failed: " . $e->getMessage() . PHP_EOL;
     echo "   Stack trace:" . PHP_EOL;
     echo $e->getTraceAsString() . PHP_EOL;
-    
+
     // Restore on error
     WardrobeItem::where('persona_id', $persona->id)->delete();
     foreach ($existingOutfits as $original) {
@@ -176,6 +176,6 @@ try {
             'is_primary' => $original->is_primary,
         ]);
     }
-    
+
     exit(1);
 }

@@ -161,6 +161,7 @@
                     <button
                         type="submit"
                         wire:loading.attr="disabled"
+                        wire:target="sendMessage"
                         class="px-6 py-3 bg-emerald-600 hover:bg-emerald-700 dark:bg-emerald-500 dark:hover:bg-emerald-600 text-white rounded-lg transition duration-150 ease-in-out disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center justify-center space-x-2 min-w-[120px] font-medium shadow-sm">
                         <span wire:loading.remove wire:target="sendMessage" class="flex items-center space-x-2">
                             <span>Send</span>

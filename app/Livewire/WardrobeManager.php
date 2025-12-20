@@ -101,7 +101,7 @@ class WardrobeManager extends Component
             'accessories' => $item->accessories ?? '',
             'is_primary' => $item->is_primary,
         ];
-        
+
         // Load tags
         $allTags = $item->tags ?? [];
         $this->modalTags = array_intersect($allTags, WardrobeService::PREDEFINED_TAGS);
@@ -114,7 +114,7 @@ class WardrobeManager extends Component
     public function saveOutfit()
     {
         $this->validate();
-        
+
         // Validate max 10 tags
         $allTags = array_merge($this->modalTags, $this->modalCustomTags);
         if (count($allTags) > 10) {
@@ -357,6 +357,7 @@ class WardrobeManager extends Component
 
     public function openGenerateModal($slot)
     {
+        \Illuminate\Support\Facades\Log::info('openGenerateModal called', ['slot' => $slot]);
         $this->generateSlot = $slot;
         $this->generateCount = 5;
         $this->selectedTags = [];
@@ -427,6 +428,7 @@ class WardrobeManager extends Component
 
     public function generateSimilar($outfitId)
     {
+        \Illuminate\Support\Facades\Log::info('generateSimilar called', ['outfit_id' => $outfitId]);
         $this->isGenerating = true;
 
         try {

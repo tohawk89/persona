@@ -12,7 +12,6 @@ use Illuminate\Support\Facades\Auth;
 class PersonaDashboard extends Component
 {
     public Persona $persona;
-    public $loading = false;
 
     public function mount(Persona $persona)
     {
@@ -26,8 +25,6 @@ class PersonaDashboard extends Component
 
     public function triggerWakeUpRoutine()
     {
-        $this->loading = true;
-
         try {
             // Generate daily plan with outfit selection
             $planData = GeminiBrain::generateDailyPlan(
@@ -85,8 +82,6 @@ class PersonaDashboard extends Component
             session()->flash('success', 'Daily plan generated successfully! ' . count($events) . ' events scheduled.');
         } catch (\Exception $e) {
             session()->flash('error', 'Failed to generate daily plan: ' . $e->getMessage());
-        } finally {
-            $this->loading = false;
         }
     }
 
