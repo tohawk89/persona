@@ -18,12 +18,14 @@ class WardrobeItem extends Model
         'lower_body',
         'footwear',
         'accessories',
+        'tags',
         'is_primary',
         'last_worn_at',
         'wear_count',
     ];
 
     protected $casts = [
+        'tags' => 'array',
         'is_primary' => 'boolean',
         'last_worn_at' => 'datetime',
         'wear_count' => 'integer',

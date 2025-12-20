@@ -77,10 +77,21 @@
                                 @if($primary->last_worn_at)
                                     <p class="text-xs text-gray-500">Last worn: {{ $primary->last_worn_at->diffForHumans() }}</p>
                                 @endif
+                                @if(!empty($primary->tags))
+                                    <div class="flex flex-wrap gap-1 mt-2">
+                                        @foreach($primary->tags as $tag)
+                                            <span class="px-2 py-0.5 text-xs bg-purple-100 text-purple-800 rounded">{{ $tag }}</span>
+                                        @endforeach
+                                    </div>
+                                @endif
                                 <div class="mt-2 flex gap-2">
                                     <button wire:click="openEditModal({{ $primary->id }})"
                                             class="text-xs text-blue-600 hover:text-blue-800">
                                         Edit
+                                    </button>
+                                    <button wire:click="generateSimilar({{ $primary->id }})"
+                                            class="text-xs text-purple-600 hover:text-purple-800 flex items-center gap-1">
+                                        <span>🔄</span> Generate Similar
                                     </button>
                                 </div>
                             </div>
@@ -93,7 +104,14 @@
                                 <div class="space-y-2">
                                     @foreach($rotation as $item)
                                         <div class="p-2 bg-gray-50 border border-gray-200 rounded">
-                                            <p class="text-sm text-gray-700">{{ $item->description }}</p>
+                                            <p class="text-sm text-gray-700 mb-1">{{ $item->description }}</p>
+                                            @if(!empty($item->tags))
+                                                <div class="flex flex-wrap gap-1 mb-2">
+                                                    @foreach($item->tags as $tag)
+                                                        <span class="px-2 py-0.5 text-xs bg-purple-100 text-purple-800 rounded">{{ $tag }}</span>
+                                                    @endforeach
+                                                </div>
+                                            @endif
                                             <div class="mt-1 flex items-center justify-between">
                                                 @if($item->last_worn_at)
                                                     <span class="text-xs text-gray-500">Last: {{ $item->last_worn_at->diffForHumans() }}</span>
@@ -108,6 +126,10 @@
                                                     <button wire:click="openEditModal({{ $item->id }})"
                                                             class="text-xs text-blue-600 hover:text-blue-800">
                                                         Edit
+                                                    </button>
+                                                    <button wire:click="generateSimilar({{ $item->id }})"
+                                                            class="text-xs text-purple-600 hover:text-purple-800">
+                                                        🔄
                                                     </button>
                                                     <button wire:click="deleteOutfit({{ $item->id }})"
                                                             wire:confirm="Are you sure you want to delete this outfit?"
@@ -126,11 +148,17 @@
                             <p class="text-sm text-gray-500 italic mb-4">No outfits yet</p>
                         @endif
 
-                        <!-- Add Button -->
-                        <button wire:click="openAddModal('{{ $slotName }}')"
-                                class="w-full mt-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded hover:bg-blue-700">
-                            + Add Outfit
-                        </button>
+                        <!-- Action Buttons -->
+                        <div class="space-y-2">
+                            <button wire:click="openGenerateModal('{{ $slotName }}')"
+                                    class="w-full px-4 py-2 bg-purple-600 text-white text-sm font-medium rounded hover:bg-purple-700 flex items-center justify-center gap-2">
+                                <span>✨</span> Generate with AI
+                            </button>
+                            <button wire:click="openAddModal('{{ $slotName }}')"
+                                    class="w-full px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded hover:bg-blue-700">
+                                + Add Manually
+                            </button>
+                        </div>
                     </div>
                 </div>
             @endforeach
@@ -204,6 +232,66 @@
                                        class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
                                        placeholder="E.g., sunglasses, small handbag">
                                 @error('form.accessories') <span class="text-red-500 text-xs">{{ $message }}</span> @enderror
+                            </div>
+
+                            <!-- Tags -->
+                            <div class="mb-4">
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Tags (Max 10)</label>
+                                
+                                <!-- Predefined Tags -->
+                                <div class="mb-3">
+                                    <div class="text-xs text-gray-600 mb-2">Predefined Tags:</div>
+                                    <div class="flex flex-wrap gap-2">
+                                        @foreach(\App\Services\WardrobeService::PREDEFINED_TAGS as $tag)
+                                            <button type="button"
+                                                    wire:click="toggleModalTag('{{ $tag }}')"
+                                                    class="px-3 py-1 text-sm rounded-full border transition-colors
+                                                           {{ in_array($tag, $modalTags) ? 'bg-purple-100 border-purple-500 text-purple-700' : 'bg-gray-100 border-gray-300 text-gray-700 hover:bg-gray-200' }}">
+                                                {{ $tag }}
+                                            </button>
+                                        @endforeach
+                                    </div>
+                                </div>
+
+                                <!-- Custom Tags -->
+                                <div class="mb-3">
+                                    <div class="text-xs text-gray-600 mb-2">Custom Tags:</div>
+                                    <div class="flex gap-2 mb-2">
+                                        <input type="text"
+                                               wire:model="newModalCustomTag"
+                                               wire:keydown.enter.prevent="addModalCustomTag"
+                                               class="flex-1 px-3 py-1 text-sm border border-gray-300 rounded-md focus:ring-purple-500 focus:border-purple-500"
+                                               placeholder="Add custom tag...">
+                                        <button type="button"
+                                                wire:click="addModalCustomTag"
+                                                class="px-4 py-1 text-sm bg-purple-600 text-white rounded-md hover:bg-purple-700 transition-colors">
+                                            + Add
+                                        </button>
+                                    </div>
+                                    @if(count($modalCustomTags) > 0)
+                                        <div class="flex flex-wrap gap-2">
+                                            @foreach($modalCustomTags as $customTag)
+                                                <span class="inline-flex items-center px-3 py-1 text-sm rounded-full bg-blue-100 border border-blue-500 text-blue-700">
+                                                    {{ $customTag }}
+                                                    <button type="button"
+                                                            wire:click="removeModalCustomTag('{{ $customTag }}')"
+                                                            class="ml-2 text-blue-600 hover:text-blue-800">
+                                                        ×
+                                                    </button>
+                                                </span>
+                                            @endforeach
+                                        </div>
+                                    @endif
+                                </div>
+
+                                <!-- Total Tag Count -->
+                                @php
+                                    $totalTags = count($modalTags) + count($modalCustomTags);
+                                @endphp
+                                <div class="text-xs {{ $totalTags > 10 ? 'text-red-600 font-semibold' : 'text-gray-500' }}">
+                                    Selected: {{ $totalTags }}/10 tags
+                                </div>
+                                @error('modalTags') <span class="text-red-500 text-xs mt-1 block">{{ $message }}</span> @enderror
                             </div>
 
                             <!-- Set as Primary -->
@@ -402,6 +490,217 @@
                     </div>
                 </div>
             @endif
+        </div>
+    @endif
+</div>
+    <!-- Generate Modal -->
+    @if($showGenerateModal)
+        <div class="fixed inset-0 z-50 overflow-y-auto" aria-labelledby="generate-modal-title" role="dialog" aria-modal="true">
+            <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+                <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" wire:click="closeGenerateModals"></div>
+
+                <div class="inline-block align-bottom bg-white dark:bg-gray-800 rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
+                    <div class="bg-white dark:bg-gray-800 px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
+                        <h3 class="text-lg font-medium text-gray-900 dark:text-gray-100 mb-4 flex items-center gap-2">
+                            <span>✨</span> Generate Outfits with AI
+                        </h3>
+
+                        <!-- Count Selector -->
+                        <div class="mb-4">
+                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                How many outfits?
+                            </label>
+                            <select wire:model="generateCount"
+                                    class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-md focus:ring-purple-500 focus:border-purple-500">
+                                @for($i = 1; $i <= 10; $i++)
+                                    <option value="{{ $i }}">{{ $i }} outfit{{ $i > 1 ? 's' : '' }}</option>
+                                @endfor
+                            </select>
+                        </div>
+
+                        <!-- Style Tags -->
+                        <div class="mb-4">
+                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                Select Style Tags:
+                            </label>
+                            <div class="flex flex-wrap gap-2">
+                                @foreach($predefinedTags as $tag)
+                                    <button type="button"
+                                            wire:click="toggleTag('{{ $tag }}')"
+                                            class="px-3 py-1 text-sm rounded-full transition-colors
+                                                   {{ in_array($tag, $selectedTags)
+                                                      ? 'bg-purple-600 text-white'
+                                                      : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600' }}">
+                                        {{ $tag }}
+                                    </button>
+                                @endforeach
+                            </div>
+                        </div>
+
+                        <!-- Custom Tags -->
+                        <div class="mb-4">
+                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                Custom Tags:
+                            </label>
+                            <div class="flex gap-2 mb-2">
+                                <input type="text"
+                                       wire:model="newCustomTag"
+                                       wire:keydown.enter.prevent="addCustomTag"
+                                       placeholder="Enter custom tag..."
+                                       class="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-md focus:ring-purple-500 focus:border-purple-500">
+                                <button type="button"
+                                        wire:click="addCustomTag"
+                                        class="px-4 py-2 bg-gray-600 text-white text-sm rounded hover:bg-gray-700">
+                                    + Add
+                                </button>
+                            </div>
+                            @if(!empty($customTags))
+                                <div class="flex flex-wrap gap-2">
+                                    @foreach($customTags as $tag)
+                                        <span class="inline-flex items-center gap-1 px-3 py-1 text-sm bg-indigo-100 dark:bg-indigo-900 text-indigo-800 dark:text-indigo-200 rounded-full">
+                                            {{ $tag }}
+                                            <button type="button"
+                                                    wire:click="removeCustomTag('{{ $tag }}')"
+                                                    class="hover:text-indigo-600 dark:hover:text-indigo-300">
+                                                ×
+                                            </button>
+                                        </span>
+                                    @endforeach
+                                </div>
+                            @endif
+                        </div>
+
+                        @if($isGenerating)
+                            <div class="text-center py-4">
+                                <div class="inline-block animate-spin rounded-full h-8 w-8 border-4 border-purple-500 border-t-transparent"></div>
+                                <p class="mt-2 text-sm text-gray-600 dark:text-gray-400">Generating with AI... (5-10 seconds)</p>
+                            </div>
+                        @endif
+                    </div>
+
+                    <div class="bg-gray-50 dark:bg-gray-700 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
+                        <button type="button"
+                                wire:click="generateWithAI"
+                                :disabled="$isGenerating"
+                                class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-purple-600 text-base font-medium text-white hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 sm:ml-3 sm:w-auto sm:text-sm disabled:opacity-50 disabled:cursor-not-allowed">
+                            Generate →
+                        </button>
+                        <button type="button"
+                                wire:click="closeGenerateModals"
+                                :disabled="$isGenerating"
+                                class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 dark:border-gray-600 shadow-sm px-4 py-2 bg-white dark:bg-gray-800 text-base font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:mt-0 sm:w-auto sm:text-sm disabled:opacity-50 disabled:cursor-not-allowed">
+                            Cancel
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    @endif
+
+    <!-- Review Modal -->
+    @if($showReviewModal)
+        <div class="fixed inset-0 z-50 overflow-y-auto" aria-labelledby="review-modal-title" role="dialog" aria-modal="true">
+            <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+                <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity"></div>
+
+                <div class="inline-block align-bottom bg-white dark:bg-gray-800 rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-4xl sm:w-full">
+                    <div class="bg-white dark:bg-gray-800 px-4 pt-5 pb-4 sm:p-6 max-h-[80vh] overflow-y-auto">
+                        <h3 class="text-lg font-medium text-gray-900 dark:text-gray-100 mb-4">
+                            Review Generated Outfits ({{ count($generatedOutfits) }})
+                        </h3>
+
+                        <div class="space-y-3">
+                            @foreach($generatedOutfits as $index => $outfit)
+                                @if($editingGenerated === $index)
+                                    <!-- Edit Mode -->
+                                    <div class="p-4 border-2 border-purple-500 dark:border-purple-400 rounded-lg bg-purple-50 dark:bg-purple-900/20">
+                                        <div class="mb-3">
+                                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Description</label>
+                                            <textarea wire:model="form.description" rows="2" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-md focus:ring-purple-500 focus:border-purple-500"></textarea>
+                                        </div>
+                                        <div class="grid grid-cols-2 gap-3 mb-3">
+                                            <div>
+                                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Upper Body</label>
+                                                <input type="text" wire:model="form.upper_body" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-md">
+                                            </div>
+                                            <div>
+                                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Lower Body</label>
+                                                <input type="text" wire:model="form.lower_body" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-md">
+                                            </div>
+                                        </div>
+                                        <div class="flex gap-2">
+                                            <button wire:click="saveEditedGenerated" class="px-3 py-1 bg-green-600 text-white text-sm rounded hover:bg-green-700">Save</button>
+                                            <button wire:click="cancelEditGenerated" class="px-3 py-1 bg-gray-600 text-white text-sm rounded hover:bg-gray-700">Cancel</button>
+                                        </div>
+                                    </div>
+                                @else
+                                    <!-- View Mode -->
+                                    <div class="flex items-start gap-3 p-4 border rounded-lg
+                                                {{ in_array($index, $selectedForSave)
+                                                   ? 'border-purple-500 dark:border-purple-400 bg-purple-50 dark:bg-purple-900/20'
+                                                   : 'border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700' }}">
+                                        <input type="checkbox"
+                                               wire:click="toggleOutfitForSave({{ $index }})"
+                                               {{ in_array($index, $selectedForSave) ? 'checked' : '' }}
+                                               class="mt-1 h-4 w-4 text-purple-600 focus:ring-purple-500 border-gray-300 rounded">
+
+                                        <div class="flex-1">
+                                            <div class="flex items-start justify-between mb-2">
+                                                <p class="text-sm text-gray-900 dark:text-gray-100 font-medium">{{ $outfit['description'] }}</p>
+                                                <label class="flex items-center ml-2">
+                                                    <input type="radio"
+                                                           name="primary_outfit"
+                                                           wire:click="setPrimaryGenerated({{ $index }})"
+                                                           {{ $primaryIndex === $index ? 'checked' : '' }}
+                                                           class="h-4 w-4 text-yellow-600 focus:ring-yellow-500">
+                                                    <span class="ml-1 text-xs text-gray-600 dark:text-gray-400">Primary</span>
+                                                </label>
+                                            </div>
+                                            <div class="text-xs text-gray-600 dark:text-gray-400 space-y-1">
+                                                @if($outfit['upper_body'])
+                                                    <div><strong>Upper:</strong> {{ $outfit['upper_body'] }}</div>
+                                                @endif
+                                                @if($outfit['lower_body'])
+                                                    <div><strong>Lower:</strong> {{ $outfit['lower_body'] }}</div>
+                                                @endif
+                                                @if($outfit['footwear'])
+                                                    <div><strong>Footwear:</strong> {{ $outfit['footwear'] }}</div>
+                                                @endif
+                                                @if($outfit['accessories'])
+                                                    <div><strong>Accessories:</strong> {{ $outfit['accessories'] }}</div>
+                                                @endif
+                                            </div>
+                                            @if(!empty($outfit['tags']))
+                                                <div class="flex flex-wrap gap-1 mt-2">
+                                                    @foreach($outfit['tags'] as $tag)
+                                                        <span class="px-2 py-0.5 text-xs bg-purple-100 dark:bg-purple-900 text-purple-800 dark:text-purple-200 rounded">{{ $tag }}</span>
+                                                    @endforeach
+                                                </div>
+                                            @endif
+                                            <div class="mt-2">
+                                                <button wire:click="editGeneratedOutfit({{ $index }})" class="text-xs text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300">Edit</button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                @endif
+                            @endforeach
+                        </div>
+                    </div>
+
+                    <div class="bg-gray-50 dark:bg-gray-700 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
+                        <button type="button"
+                                wire:click="saveGeneratedOutfits"
+                                class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-purple-600 text-base font-medium text-white hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 sm:ml-3 sm:w-auto sm:text-sm">
+                            Save Selected ({{ count($selectedForSave) }})
+                        </button>
+                        <button type="button"
+                                wire:click="closeGenerateModals"
+                                class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 dark:border-gray-600 shadow-sm px-4 py-2 bg-white dark:bg-gray-800 text-base font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:mt-0 sm:w-auto sm:text-sm">
+                            ← Back
+                        </button>
+                    </div>
+                </div>
+            </div>
         </div>
     @endif
 </div>
