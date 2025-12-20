@@ -173,7 +173,7 @@ class CheckSystemHealth extends Command
 
             // Send a simple test prompt
             $client = Gemini::client($apiKey);
-            $response = $client->generativeModel('gemini-2.5-flash')
+            $response = $client->generativeModel(config('services.gemini.model'))
                 ->generateContent('Respond with just the word "OK"');
 
             $text = $response->text();

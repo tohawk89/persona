@@ -26,6 +26,7 @@ class PersonaManager extends Component
     public $image_frequency;
     public $is_active = true;
     public $confirmingDelete = false;
+    public $confirmingReset = false;
     public $telegram_bot_token;
     public $telegram_bot_username;
     public $webhookStatus = null;
@@ -283,7 +284,7 @@ PROMPT;
         $apiKey = config('services.gemini.api_key');
         $client = Gemini::client($apiKey);
 
-        $response = $client->generativeModel('gemini-2.5-flash')->generateContent($prompt);
+        $response = $client->generativeModel(config('services.gemini.model'))->generateContent($prompt);
         $jsonResponse = $response->text();
 
         // Clean markdown code blocks if present
@@ -384,6 +385,71 @@ TEMPLATE;
         }
     }
 
+    public function confirmReset()
+    {
+        $this->confirmingReset = true;
+    }
+
+    public function resetPersona()
+    {
+        if (!$this->persona) {
+            session()->flash('error', 'No persona found to reset.');
+            return;
+        }
+
+        try {
+            // 1. Delete all messages
+            $messageCount = $this->persona->messages()->count();
+            $this->persona->messages()->delete();
+
+            // 2. Delete all event schedules
+            $scheduleCount = $this->persona->eventSchedules()->count();
+            $this->persona->eventSchedules()->delete();
+
+            // 3. Delete conversation memory tags (keep core identity)
+            // Keep: target='self' AND importance >= 8 (core persona identity)
+            // Delete: All target='user' tags (facts learned from conversations)
+            // Delete: Low importance self tags (temporary states like current_mood, daily_outfit)
+            $memoryCount = $this->persona->memoryTags()
+                ->where(function($query) {
+                    $query->where('target', 'user') // All user facts
+                          ->orWhere(function($q) {
+                              $q->where('target', 'self')
+                                ->where('importance', '<', 8); // Low importance self tags
+                          });
+                })
+                ->count();
+
+            $this->persona->memoryTags()
+                ->where(function($query) {
+                    $query->where('target', 'user')
+                          ->orWhere(function($q) {
+                              $q->where('target', 'self')
+                                ->where('importance', '<', 8);
+                          });
+                })
+                ->delete();
+
+            Log::info('PersonaManager: Persona reset', [
+                'persona_id' => $this->persona->id,
+                'messages_deleted' => $messageCount,
+                'schedules_deleted' => $scheduleCount,
+                'memories_deleted' => $memoryCount,
+            ]);
+
+            session()->flash('success', "Persona reset successfully! Cleared {$messageCount} messages, {$scheduleCount} schedules, and {$memoryCount} memory tags. Core identity preserved.");
+            $this->confirmingReset = false;
+
+        } catch (\Exception $e) {
+            Log::error('PersonaManager: Failed to reset persona', [
+                'persona_id' => $this->persona->id,
+                'error' => $e->getMessage(),
+            ]);
+            session()->flash('error', 'Failed to reset persona. Please try again.');
+            $this->confirmingReset = false;
+        }
+    }
+
     public function connectWebhook()
     {
         if (empty($this->telegram_bot_token)) {
@@ -398,9 +464,9 @@ TEMPLATE;
                 'telegram_bot_username' => $this->telegram_bot_username,
             ]);
 
-            // Set webhook URL
-            $appUrl = config('app.url');
-            $webhookUrl = "{$appUrl}/telegram/webhook/{$this->telegram_bot_token}";
+            // Set webhook URL - use TELEGRAM_WEBHOOK_URL base if available, fallback to APP_URL
+            $webhookBase = env('TELEGRAM_WEBHOOK_BASE_URL', config('app.url'));
+            $webhookUrl = "{$webhookBase}/telegram/webhook/{$this->telegram_bot_token}";
 
             $webhookParams = ['url' => $webhookUrl];
 

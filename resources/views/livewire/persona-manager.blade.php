@@ -354,6 +354,44 @@
 
                 <!-- Danger Zone -->
                 <div class="mt-8 border-t border-gray-300 dark:border-gray-600 pt-8">
+                    <!-- Reset Persona Section -->
+                    <div class="border border-orange-300 dark:border-orange-700 rounded-lg p-6 bg-orange-50 dark:bg-orange-900/20 mb-6">
+                        <h3 class="text-lg font-semibold text-orange-800 dark:text-orange-200 mb-2">🔄 Reset Persona</h3>
+                        <p class="text-sm text-orange-700 dark:text-orange-300 mb-4">
+                            Start fresh with your persona. This will clear all messages, scheduled events, and conversation memories, while preserving core identity traits (personality, backstory, appearance). Gallery media is not affected.
+                        </p>
+
+                        @if($confirmingReset)
+                            <div class="bg-white dark:bg-gray-800 border border-orange-400 dark:border-orange-600 rounded-lg p-4 mb-4">
+                                <p class="text-sm font-semibold text-orange-800 dark:text-orange-200 mb-3">
+                                    ⚠️ Reset conversation and clear learned memories?
+                                </p>
+                                <div class="flex gap-3">
+                                    <button
+                                        wire:click="resetPersona"
+                                        class="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white font-medium rounded-lg transition-colors duration-200"
+                                    >
+                                        Yes, Reset Now
+                                    </button>
+                                    <button
+                                        wire:click="$set('confirmingReset', false)"
+                                        class="px-4 py-2 bg-gray-300 hover:bg-gray-400 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 font-medium rounded-lg transition-colors duration-200"
+                                    >
+                                        Cancel
+                                    </button>
+                                </div>
+                            </div>
+                        @else
+                            <button
+                                wire:click="confirmReset"
+                                class="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white font-medium rounded-lg transition-colors duration-200"
+                            >
+                                🔄 Reset Conversation
+                            </button>
+                        @endif
+                    </div>
+
+                    <!-- Delete Persona Section -->
                     <div class="border border-red-300 dark:border-red-700 rounded-lg p-6 bg-red-50 dark:bg-red-900/20">
                         <h3 class="text-lg font-semibold text-red-800 dark:text-red-200 mb-2">🚨 Danger Zone</h3>
                         <p class="text-sm text-red-700 dark:text-red-300 mb-4">

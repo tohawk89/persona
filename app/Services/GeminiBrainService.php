@@ -21,7 +21,6 @@ class GeminiBrainService
     // CONSTANTS
     // ============================================================================
 
-    private const GEMINI_MODEL = 'gemini-2.5-flash';
     private const CLOUDFLARE_MODEL = '@cf/black-forest-labs/flux-1-schnell';
     private const MAX_RETRIES = 3;
     private const INITIAL_RETRY_DELAY = 1;
@@ -127,7 +126,7 @@ PROMPT;
             $apiKey = config('services.gemini.api_key');
             $client = Gemini::client($apiKey);
 
-            $result = $client->generativeModel(self::GEMINI_MODEL)->generateContent($prompt);
+            $result = $client->generativeModel(config('services.gemini.model'))->generateContent($prompt);
             return $result->text();
         } catch (\Exception $e) {
             Log::error('GeminiBrainService: Simple Gemini call failed', [
@@ -467,7 +466,7 @@ PROMPT;
 
             $apiKey = config('services.gemini.api_key');
             $client = Gemini::client($apiKey);
-            $result = $client->generativeModel(self::GEMINI_MODEL)
+            $result = $client->generativeModel(config('services.gemini.model'))
                 ->withGenerationConfig(
                     new GenerationConfig(
                         temperature: 0.7,
@@ -590,7 +589,7 @@ PROMPT;
 
             $apiKey = config('services.gemini.api_key');
             $client = Gemini::client($apiKey);
-            $result = $client->generativeModel(self::GEMINI_MODEL)
+            $result = $client->generativeModel(config('services.gemini.model'))
                 ->withGenerationConfig(
                     new GenerationConfig(
                         temperature: 0.3,
@@ -1295,7 +1294,7 @@ PROMPT;
 
         for ($attempt = 1; $attempt <= self::MAX_RETRIES; $attempt++) {
             try {
-                $model = $client->generativeModel(self::GEMINI_MODEL);
+                $model = $client->generativeModel(config('services.gemini.model'));
 
                 // If image provided, use HTTP API directly (SDK has issues with multimodal)
                 if ($imagePath && file_exists($imagePath)) {
@@ -1310,7 +1309,7 @@ PROMPT;
 
                     // Use HTTP API directly for multimodal (SDK has compatibility issues)
                     $apiKey = config('services.gemini.api_key');
-                    $url = "https://generativelanguage.googleapis.com/v1beta/models/" . self::GEMINI_MODEL . ":generateContent?key={$apiKey}";
+                    $url = "https://generativelanguage.googleapis.com/v1beta/models/" . config('services.gemini.model') . ":generateContent?key={$apiKey}";
 
                     $payload = [
                         'contents' => [
@@ -1419,7 +1418,7 @@ PROMPT;
 
         try {
             // Use HTTP API for function calling (SDK may have limited support)
-            $url = "https://generativelanguage.googleapis.com/v1beta/models/" . self::GEMINI_MODEL . ":generateContent?key={$apiKey}";
+            $url = "https://generativelanguage.googleapis.com/v1beta/models/" . config('services.gemini.model') . ":generateContent?key={$apiKey}";
 
             // Build request payload
             $parts = [['text' => $prompt]];
