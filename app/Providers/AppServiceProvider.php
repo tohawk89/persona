@@ -6,6 +6,7 @@ use Illuminate\Support\ServiceProvider;
 use App\Services\GeminiBrainService;
 use App\Services\TelegramService;
 use App\Services\SmartQueueService;
+use App\Services\WardrobeService;
 use App\Contracts\ImageGeneratorInterface;
 use App\Services\ImageGeneratorManager;
 
@@ -36,6 +37,10 @@ class AppServiceProvider extends ServiceProvider
 
         $this->app->singleton(SmartQueueService::class, function ($app) {
             return new SmartQueueService();
+        });
+
+        $this->app->singleton(WardrobeService::class, function ($app) {
+            return new WardrobeService();
         });
     }
 

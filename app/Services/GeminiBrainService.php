@@ -14,6 +14,7 @@ use App\Models\Persona;
 use App\Models\MemoryTag;
 use App\Models\EventSchedule;
 use App\Services\ImageGeneratorManager;
+use App\Facades\Wardrobe;
 
 class GeminiBrainService
 {
@@ -857,16 +858,27 @@ PROMPT;
         // Remove SELFIE: prefix if present
         $sanitizedPrompt = preg_replace('/^SELFIE:\s*/i', '', $sanitizedPrompt);
 
-        // Get current outfit based on time of day
-        $currentOutfit = $this->getCurrentOutfit($persona->id);
+        // Get current outfit from wardrobe based on time of day
+        $currentHour = now()->hour;
+        $timeContext = ($currentHour >= 6 && $currentHour < 21) ? 'daytime' : 'nighttime';
+        $wardrobeItem = Wardrobe::getTodaysOutfit($persona, $timeContext);
 
         // Parse or randomize visual elements
         $shotType = $this->extractOrRandomize('shot type', $sanitizedPrompt, $this->getRandomShotType());
         $lighting = $this->extractOrRandomize('lighting', $sanitizedPrompt, $this->getRandomLighting());
         $location = $this->extractOrRandomize('location', $sanitizedPrompt, $this->getRandomLocation());
 
-        // Filter outfit based on shot type (remove footwear for upper-body shots)
-        $filteredOutfit = $this->filterOutfitForShot($currentOutfit ?? '', $shotType);
+        // Get filtered outfit description based on shot type
+        $filteredOutfit = $wardrobeItem
+            ? Wardrobe::buildOutfitDescription($wardrobeItem, $shotType)
+            : null;
+
+        Log::info('GeminiBrainService: Using wardrobe outfit', [
+            'persona_id' => $persona->id,
+            'time_context' => $timeContext,
+            'shot_type' => $shotType,
+            'outfit' => $filteredOutfit ?? 'none',
+        ]);
 
         // Fetch dynamic traits from memory tags
         $dynamicTraits = MemoryTag::where('persona_id', $persona->id)
@@ -877,7 +889,7 @@ PROMPT;
         $finalTraits = $this->filterTraitsForContext(
             $persona->physical_traits ?? '',
             $dynamicTraits ?? '',
-            $currentOutfit ?? ''
+            $wardrobeItem?->description ?? ''
         );
 
         // Build subject description - remove outfit mentions since we add filtered outfit separately
@@ -890,7 +902,7 @@ PROMPT;
         // Construct the dynamic prompt
         $fullPrompt = "A photo of {$subjectDescription}. ";
 
-        // Add physical traits
+        // Add physical traits if available
         if ($finalTraits) {
             // Get gender description (defaults to 'person' if not set)
             $genderDesc = match($persona->gender ?? 'female') {
@@ -908,13 +920,12 @@ PROMPT;
             $cleanTraits = preg_replace('/\. Her features include /', ', ', $cleanTraits); // Connect sentences
             $cleanTraits = trim($cleanTraits, ' .,');
 
-            $fullPrompt .= "The subject is {$genderDesc} with {$cleanTraits}";
+            $fullPrompt .= "The subject is {$genderDesc} with {$cleanTraits}. ";
+        }
 
-            if ($filteredOutfit) {
-                $fullPrompt .= ", wearing {$filteredOutfit}";
-            }
-
-            $fullPrompt .= ". ";
+        // Add outfit independently (always added when available, regardless of traits)
+        if ($filteredOutfit) {
+            $fullPrompt .= "Wearing {$filteredOutfit}. ";
         }
 
         // Add dynamic visual elements
@@ -1251,6 +1262,13 @@ PROMPT;
 
     /**
      * Get current outfit based on time of day with caching.
+     */
+    /**
+     * Get current outfit based on time of day.
+     *
+     * @deprecated Use WardrobeService::getTodaysOutfit() instead
+     * @param int $personaId
+     * @return string|null
      */
     private function getCurrentOutfit(int $personaId): ?string
     {

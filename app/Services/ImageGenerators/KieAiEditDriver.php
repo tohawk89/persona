@@ -105,13 +105,13 @@ class KieAiEditDriver implements ImageGeneratorInterface
         }
 
         // Priority 1: Use avatar (passport photo) for facial consistency
-        $avatarMedia = $persona->getMedia('avatar');
-        if ($avatarMedia->isNotEmpty()) {
+        $avatarUrl = $persona->getPublicMediaUrl('avatar');
+        if ($avatarUrl) {
             Log::info('KieAiEditDriver: Using avatar as reference', [
                 'persona_id' => $persona->id,
-                'avatar_url' => $avatarMedia->first()->getUrl(),
+                'avatar_url' => $avatarUrl,
             ]);
-            return [$avatarMedia->first()->getUrl()];
+            return [$avatarUrl];
         }
 
         // Priority 2: Fallback to reference_image (single file)

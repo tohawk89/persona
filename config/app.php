@@ -17,6 +17,19 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Public Media URL
+    |--------------------------------------------------------------------------
+    |
+    | This URL is used to generate publicly accessible media URLs for external
+    | APIs (e.g., image generators). In development, use ngrok tunnel. In
+    | production, use your actual domain with CDN.
+    |
+    */
+
+    'public_media_url' => env('PUBLIC_MEDIA_URL'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Application Environment
     |--------------------------------------------------------------------------
     |

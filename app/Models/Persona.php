@@ -57,6 +57,11 @@ class Persona extends Model implements HasMedia
         return $this->hasMany(Message::class);
     }
 
+    public function wardrobeItems(): HasMany
+    {
+        return $this->hasMany(WardrobeItem::class);
+    }
+
     public function registerMediaCollections(): void
     {
         $this->addMediaCollection('reference_image')
@@ -87,5 +92,33 @@ class Persona extends Model implements HasMedia
             ->height(900)
             ->sharpen(10)
             ->nonQueued();
+    }
+
+    /**
+     * Get publicly accessible URL for media (for external APIs)
+     *
+     * In development: Uses PUBLIC_MEDIA_URL (ngrok tunnel)
+     * In production: Uses PUBLIC_MEDIA_URL (actual domain/CDN)
+     */
+    public function getPublicMediaUrl(string $collection = 'avatar'): ?string
+    {
+        $media = $this->getMedia($collection)->first();
+
+        if (!$media) {
+            return null;
+        }
+
+        $publicBaseUrl = config('app.public_media_url');
+
+        // If PUBLIC_MEDIA_URL is configured, use it instead of local URL
+        if ($publicBaseUrl) {
+            // Get the path relative to the public disk (e.g., "88/file.png")
+            // Media is stored in storage/app/public/{id}/{filename}
+            $relativePath = $media->id . '/' . $media->file_name;
+            return rtrim($publicBaseUrl, '/') . '/storage/' . $relativePath;
+        }
+
+        // Fallback to local URL (only works in same network)
+        return $media->getUrl();
     }
 }
