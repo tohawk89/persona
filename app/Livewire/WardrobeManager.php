@@ -2,41 +2,62 @@
 
 namespace App\Livewire;
 
+use App\Facades\Wardrobe;
+use App\Models\DailyOutfitSelection;
 use App\Models\Persona;
 use App\Models\WardrobeItem;
-use App\Facades\Wardrobe;
 use App\Services\WardrobeService;
-use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Log;
 use Livewire\Component;
 
 class WardrobeManager extends Component
 {
     public Persona $persona;
+
     public $showModal = false;
+
     public $editingId = null;
+
     public $selectedSlot = 'casual_daytime';
+
     public $activeTab = 'wardrobe';
+
     public $historyDateRange = 30;
+
     public $outfitHistory = [];
+
     public $analytics = [];
 
     // AI Generation properties
     public $showGenerateModal = false;
+
     public $showReviewModal = false;
+
     public $generateSlot = null;
+
     public $generateCount = 5;
+
     public $selectedTags = [];
+
     public $customTags = [];
+
     public $newCustomTag = '';
+
     public $generatedOutfits = [];
+
     public $selectedForSave = [];
+
     public $primaryIndex = 0;
+
     public $isGenerating = false;
+
     public $editingGenerated = null;
 
     // Outfit modal tag management
     public $modalTags = [];
+
     public $modalCustomTags = [];
+
     public $newModalCustomTag = '';
 
     public $form = [
@@ -48,7 +69,7 @@ class WardrobeManager extends Component
         'is_primary' => false,
     ];
 
-    public $slots = [
+    public $wardrobeSlots = [
         'casual_daytime' => ['icon' => '🌞', 'label' => 'Casual Daytime'],
         'casual_nighttime' => ['icon' => '🌙', 'label' => 'Casual Nighttime'],
         'formal' => ['icon' => '👔', 'label' => 'Formal'],
@@ -119,6 +140,7 @@ class WardrobeManager extends Component
         $allTags = array_merge($this->modalTags, $this->modalCustomTags);
         if (count($allTags) > 10) {
             session()->flash('error', 'Maximum 10 tags allowed per outfit.');
+
             return;
         }
 
@@ -158,6 +180,7 @@ class WardrobeManager extends Component
 
         if ($item->is_primary) {
             session()->flash('error', 'Cannot delete primary outfit. Set another outfit as primary first.');
+
             return;
         }
 
@@ -214,6 +237,7 @@ class WardrobeManager extends Component
             // Check max 10 tags
             if (count($this->modalTags) + count($this->modalCustomTags) >= 10) {
                 session()->flash('error', 'Maximum 10 tags allowed per outfit.');
+
                 return;
             }
             $this->modalTags[] = $tag;
@@ -231,12 +255,14 @@ class WardrobeManager extends Component
         // Check if already exists
         if (in_array($tag, $this->modalCustomTags) || in_array($tag, $this->modalTags)) {
             $this->newModalCustomTag = '';
+
             return;
         }
 
         // Check max 10 tags
         if (count($this->modalTags) + count($this->modalCustomTags) >= 10) {
             session()->flash('error', 'Maximum 10 tags allowed per outfit.');
+
             return;
         }
 
@@ -271,7 +297,7 @@ class WardrobeManager extends Component
     {
         $startDate = now()->subDays($this->historyDateRange);
 
-        $this->outfitHistory = \App\Models\DailyOutfitSelection::where('persona_id', $this->persona->id)
+        $this->outfitHistory = DailyOutfitSelection::where('persona_id', $this->persona->id)
             ->where('date', '>=', $startDate)
             ->with('wardrobeItem')
             ->orderBy('date', 'desc')
@@ -329,7 +355,7 @@ class WardrobeManager extends Component
 
     public function exportHistory()
     {
-        $history = \App\Models\DailyOutfitSelection::where('persona_id', $this->persona->id)
+        $history = DailyOutfitSelection::where('persona_id', $this->persona->id)
             ->with('wardrobeItem')
             ->orderBy('date', 'desc')
             ->get();
@@ -348,7 +374,7 @@ class WardrobeManager extends Component
 
         return response()->streamDownload(function () use ($csv) {
             echo $csv;
-        }, 'outfit-history-' . $this->persona->name . '-' . now()->format('Y-m-d') . '.csv');
+        }, 'outfit-history-'.$this->persona->name.'-'.now()->format('Y-m-d').'.csv');
     }
 
     // ========================================
@@ -357,7 +383,7 @@ class WardrobeManager extends Component
 
     public function openGenerateModal($slot)
     {
-        \Illuminate\Support\Facades\Log::info('openGenerateModal called', ['slot' => $slot]);
+        Log::info('openGenerateModal called', ['slot' => $slot]);
         $this->generateSlot = $slot;
         $this->generateCount = 5;
         $this->selectedTags = [];
@@ -379,7 +405,7 @@ class WardrobeManager extends Component
     public function addCustomTag()
     {
         $tag = trim($this->newCustomTag);
-        if (!empty($tag) && !in_array($tag, $this->customTags) && !in_array($tag, $this->selectedTags)) {
+        if (! empty($tag) && ! in_array($tag, $this->customTags) && ! in_array($tag, $this->selectedTags)) {
             $this->customTags[] = $tag;
             $this->selectedTags[] = $tag;
             $this->newCustomTag = '';
@@ -419,7 +445,7 @@ class WardrobeManager extends Component
             $this->showGenerateModal = false;
             $this->showReviewModal = true;
         } catch (\Exception $e) {
-            \Illuminate\Support\Facades\Log::error('Generation failed', ['error' => $e->getMessage()]);
+            Log::error('Generation failed', ['error' => $e->getMessage()]);
             session()->flash('error', 'Failed to generate outfits. Please try again.');
         } finally {
             $this->isGenerating = false;
@@ -428,7 +454,7 @@ class WardrobeManager extends Component
 
     public function generateSimilar($outfitId)
     {
-        \Illuminate\Support\Facades\Log::info('generateSimilar called', ['outfit_id' => $outfitId]);
+        Log::info('generateSimilar called', ['outfit_id' => $outfitId]);
         $this->isGenerating = true;
 
         try {
@@ -442,7 +468,7 @@ class WardrobeManager extends Component
 
             $this->showReviewModal = true;
         } catch (\Exception $e) {
-            \Illuminate\Support\Facades\Log::error('Generate similar failed', ['error' => $e->getMessage()]);
+            Log::error('Generate similar failed', ['error' => $e->getMessage()]);
             session()->flash('error', 'Failed to generate similar outfits.');
         } finally {
             $this->isGenerating = false;
@@ -508,13 +534,14 @@ class WardrobeManager extends Component
     {
         if (empty($this->selectedForSave)) {
             session()->flash('error', 'Please select at least one outfit to save.');
+
             return;
         }
 
         $savedCount = 0;
 
         foreach ($this->selectedForSave as $index) {
-            if (!isset($this->generatedOutfits[$index])) {
+            if (! isset($this->generatedOutfits[$index])) {
                 continue;
             }
 
@@ -563,7 +590,7 @@ class WardrobeManager extends Component
     {
         $wardrobeBySlot = [];
 
-        foreach ($this->slots as $slotName => $slotInfo) {
+        foreach ($this->wardrobeSlots as $slotName => $slotInfo) {
             $wardrobeBySlot[$slotName] = WardrobeItem::where('persona_id', $this->persona->id)
                 ->where('slot_name', $slotName)
                 ->orderBy('is_primary', 'desc')

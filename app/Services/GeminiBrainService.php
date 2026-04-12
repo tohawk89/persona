@@ -2,19 +2,17 @@
 
 namespace App\Services;
 
+use App\Facades\Wardrobe;
+use App\Models\EventSchedule;
+use App\Models\MemoryTag;
+use App\Models\Persona;
+use Carbon\Carbon;
 use Gemini;
 use Gemini\Data\GenerationConfig;
 use Gemini\Enums\ResponseMimeType;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Str;
-use App\Models\Persona;
-use App\Models\MemoryTag;
-use App\Models\EventSchedule;
-use App\Services\ImageGeneratorManager;
-use App\Facades\Wardrobe;
+use Illuminate\Support\Facades\Log;
 
 class GeminiBrainService
 {
@@ -23,31 +21,31 @@ class GeminiBrainService
     // ============================================================================
 
     private const CLOUDFLARE_MODEL = '@cf/black-forest-labs/flux-1-schnell';
+
     private const MAX_RETRIES = 3;
+
     private const INITIAL_RETRY_DELAY = 1;
+
     private const IMAGE_NUM_STEPS = 4;
+
     private const NIGHT_TIME_START = 21; // 9 PM
+
     private const NIGHT_TIME_END = 6; // 6 AM
 
     // Cache for frequently accessed data
     private array $outfitCache = [];
+
     private array $moodCache = [];
+
     private ?Persona $currentPersona = null;
 
-    public function __construct(private readonly ImageGeneratorManager $imageGeneratorManager)
-    {
-    }
+    public function __construct(private readonly ImageGeneratorManager $imageGeneratorManager) {}
 
     // ============================================================================
     // PUBLIC API METHODS
     // ============================================================================
     /**
      * Generate a response for testing without saving to database.
-     *
-     * @param Persona $persona
-     * @param string $userMessage
-     * @param array $chatHistory
-     * @return string
      */
     public function generateTestResponse(Persona $persona, string $userMessage, array $chatHistory = []): string
     {
@@ -111,14 +109,14 @@ PROMPT;
             ]);
 
             // Return user-friendly message instead of technical error
-            return "Adoi, ada masalah sikit... Cuba tanya sekali lagi? 💭";
+            return 'Adoi, ada masalah sikit... Cuba tanya sekali lagi? 💭';
         }
     }
 
     /**
      * Simple Gemini API call for general-purpose text generation.
      *
-     * @param string $prompt The prompt to send to Gemini
+     * @param  string  $prompt  The prompt to send to Gemini
      * @return string The AI's response
      */
     public function callGemini(string $prompt): string
@@ -128,6 +126,7 @@ PROMPT;
             $client = Gemini::client($apiKey);
 
             $result = $client->generativeModel(config('services.gemini.model'))->generateContent($prompt);
+
             return $result->text();
         } catch (\Exception $e) {
             Log::error('GeminiBrainService: Simple Gemini call failed', [
@@ -142,11 +141,11 @@ PROMPT;
      * Generate a conversational response based on chat history and memory tags.
      * Supports multimodal input (text + image) via Gemini Vision API.
      *
-     * @param Collection $chatHistory Collection of messages (sender_type, content)
-     * @param Collection $memoryTags Collection of memory tags (target, key, value)
-     * @param string $systemPrompt The persona's system prompt
-     * @param Persona $persona The persona object (for image generation)
-     * @param string|null $imagePath Optional path to image file for vision analysis
+     * @param  Collection  $chatHistory  Collection of messages (sender_type, content)
+     * @param  Collection  $memoryTags  Collection of memory tags (target, key, value)
+     * @param  string  $systemPrompt  The persona's system prompt
+     * @param  Persona  $persona  The persona object (for image generation)
+     * @param  string|null  $imagePath  Optional path to image file for vision analysis
      * @return string The AI's response
      */
     public function generateChatResponse(
@@ -287,7 +286,7 @@ PROMPT;
                 'had_image' => $imagePath !== null,
             ]);
 
-            return "Adoi, ada masalah sikit... Cuba tanya sekali lagi? 💭";
+            return 'Adoi, ada masalah sikit... Cuba tanya sekali lagi? 💭';
         }
     }
 
@@ -295,8 +294,8 @@ PROMPT;
      * Generate a just-in-time response for a scheduled event.
      * This treats the event's context_prompt as an instruction, not final text.
      *
-     * @param EventSchedule $event The scheduled event with instruction
-     * @param Persona $persona The persona
+     * @param  EventSchedule  $event  The scheduled event with instruction
+     * @param  Persona  $persona  The persona
      * @return string The generated response (may contain media tags)
      */
     public function generateEventResponse(EventSchedule $event, Persona $persona): string
@@ -385,7 +384,7 @@ PROMPT;
                 'trace' => $e->getTraceAsString(),
             ]);
 
-            return "Adoi, ada masalah sikit... 💭";
+            return 'Adoi, ada masalah sikit... 💭';
         }
     }
 
@@ -393,10 +392,8 @@ PROMPT;
      * Generate a daily event plan based on memory tags.
      * Returns a JSON array of events.
      *
-     * @param Collection $memoryTags
-     * @param string $systemPrompt
-     * @param string $wakeTime (e.g., "08:00")
-     * @param string $sleepTime (e.g., "23:00")
+     * @param  string  $wakeTime  (e.g., "08:00")
+     * @param  string  $sleepTime  (e.g., "23:00")
      * @return array Array of events with structure: [type, content, scheduled_at]
      */
     public function generateDailyPlan(
@@ -481,8 +478,9 @@ PROMPT;
             // Parse and validate JSON
             $planData = json_decode($jsonResponse, true);
 
-            if (!is_array($planData) || !isset($planData['events'])) {
+            if (! is_array($planData) || ! isset($planData['events'])) {
                 Log::warning('GeminiBrainService: Invalid JSON response from Gemini for daily plan');
+
                 return [
                     'events' => $this->getFallbackDailyPlan($today, $wakeTime),
                     'daily_outfit' => null,
@@ -512,8 +510,7 @@ PROMPT;
      * Extract memory tags from recent conversation.
      * Returns an array of memory tags.
      *
-     * @param Collection $chatHistory
-     * @param string $systemPrompt
+     * @param  string  $systemPrompt
      * @return array Array of memory tags with structure: [target, key, value]
      */
     public function extractMemoryTags(
@@ -602,10 +599,11 @@ PROMPT;
             $jsonResponse = $result->text();
             $changes = json_decode($jsonResponse, true);
 
-            if (!is_array($changes) || !isset($changes['add']) || !isset($changes['update']) || !isset($changes['remove'])) {
+            if (! is_array($changes) || ! isset($changes['add']) || ! isset($changes['update']) || ! isset($changes['remove'])) {
                 Log::warning('GeminiBrainService: Invalid JSON response from Gemini for memory extraction', [
                     'response' => $jsonResponse,
                 ]);
+
                 return ['add' => [], 'update' => [], 'remove' => []];
             }
 
@@ -622,8 +620,8 @@ PROMPT;
     /**
      * Generate an image using Cloudflare Workers AI (Flux.1 Schnell model).
      *
-     * @param string $prompt The base image generation prompt
-     * @param Persona $persona Persona to use for physical traits consistency
+     * @param  string  $prompt  The base image generation prompt
+     * @param  Persona  $persona  Persona to use for physical traits consistency
      * @return string|null Image URL or null if generation fails
      */
     public function generateImage(string $prompt, Persona $persona): ?string
@@ -660,8 +658,52 @@ PROMPT;
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
             ]);
+
             return null;
         }
+    }
+
+    /**
+     * Build the full system instructions for a persona (system prompt + memory context + media instructions).
+     * Used by PersonaAgent to power laravel/ai based conversations.
+     */
+    public function buildPersonaInstructions(Persona $persona): string
+    {
+        $memoryContext = $this->buildMemoryContext($persona->memoryTags);
+        $mediaInstructions = $this->buildMediaInstructions($persona);
+
+        return <<<PERSONA_SYSTEM
+{$persona->system_prompt}
+
+MEMORY CONTEXT:
+{$memoryContext}
+
+INSTRUCTIONS:
+- Respond naturally as the persona, taking into account the memory context and conversation history.
+
+===== MEDIA GENERATION CAPABILITY (IMPORTANT) =====
+{$mediaInstructions}
+===== END MEDIA GENERATION =====
+
+CRITICAL FORMATTING RULE (MUST FOLLOW):
+- NEVER send walls of text or multiple paragraphs in one message
+- ALWAYS separate each distinct thought, question, or paragraph with <SPLIT>
+- Examples:
+  * "Good morning sayang! <SPLIT> Did you sleep well? <SPLIT> I missed you 💕"
+  * "Aww that's sweet! <SPLIT> What did you eat? <SPLIT> Tell me more!"
+PERSONA_SYSTEM;
+    }
+
+    /**
+     * Process all media tags (images and voice) in an AI response string.
+     * Public wrapper used by PersonaAgent after getting a laravel/ai response.
+     */
+    public function processMediaTags(string $text, Persona $persona): string
+    {
+        $text = $this->processImageTags($text, $persona);
+        $text = $this->processVoiceTags($text, $persona);
+
+        return $text;
     }
 
     // ============================================================================
@@ -672,7 +714,6 @@ PROMPT;
      * Generate persona-driven loading message for image generation.
      * Uses AI to create in-character response while preparing image.
      *
-     * @param Persona $persona
      * @return string|null Loading message or null if generation fails
      */
     public function generateImageLoadingMessage(Persona $persona): ?string
@@ -714,7 +755,7 @@ PROMPT;
             ]);
 
             // Fallback to generic message
-            return "Wait, just open my camera! 📸";
+            return 'Wait, just open my camera! 📸';
         }
     }
 
@@ -723,7 +764,7 @@ PROMPT;
      */
     private function processImageTags(string $textResponse, Persona $persona): string
     {
-        if (!preg_match('/\[GENERATE_IMAGE:\s*(.+?)\]/i', $textResponse, $matches)) {
+        if (! preg_match('/\[GENERATE_IMAGE:\s*(.+?)\]/i', $textResponse, $matches)) {
             return $textResponse;
         }
 
@@ -764,7 +805,7 @@ PROMPT;
      */
     private function processVoiceTags(string $textResponse, ?Persona $persona = null): string
     {
-        if (!preg_match('/\[SEND_VOICE:\s*(.+?)\]/i', $textResponse, $matches)) {
+        if (! preg_match('/\[SEND_VOICE:\s*(.+?)\]/i', $textResponse, $matches)) {
             return $textResponse;
         }
 
@@ -804,7 +845,7 @@ PROMPT;
             ->first();
 
         // Cache key includes updated_at to auto-refresh on changes
-        $cacheKey = $persona->id . '_' . ($currentMood?->updated_at?->timestamp ?? 'none');
+        $cacheKey = $persona->id.'_'.($currentMood?->updated_at?->timestamp ?? 'none');
 
         if (isset($this->moodCache[$cacheKey])) {
             return $this->moodCache[$cacheKey];
@@ -812,9 +853,10 @@ PROMPT;
 
         $context = $currentMood
             ? "CURRENT STATE: You are currently feeling [{$currentMood->value}]. Let this emotion color your tone and responses.\n\n"
-            : "";
+            : '';
 
         $this->moodCache[$cacheKey] = $context;
+
         return $context;
     }
 
@@ -844,7 +886,7 @@ PROMPT;
 
             // Build POV prompt without persona traits
             $fullPrompt = "Point of view shot (POV) of {$cleanDescription}. ";
-            $fullPrompt .= "Photorealistic, 8k, raw photo, shot on iPhone, film grain.";
+            $fullPrompt .= 'Photorealistic, 8k, raw photo, shot on iPhone, film grain.';
 
             Log::info('GeminiBrainService: Built POV/Scenery image prompt', [
                 'mode' => $mode,
@@ -905,7 +947,7 @@ PROMPT;
         // Add physical traits if available
         if ($finalTraits) {
             // Get gender description (defaults to 'person' if not set)
-            $genderDesc = match($persona->gender ?? 'female') {
+            $genderDesc = match ($persona->gender ?? 'female') {
                 'male' => 'a man',
                 'female' => 'a woman',
                 'non-binary' => 'a person',
@@ -934,11 +976,11 @@ PROMPT;
         $fullPrompt .= "Lighting is {$lighting}. ";
 
         // Add technical quality tags (removed 'candid' to allow variety)
-        $fullPrompt .= "Style: 4k, hyper-realistic, film grain, raw photo.";
+        $fullPrompt .= 'Style: 4k, hyper-realistic, film grain, raw photo.';
 
         // Safety check: truncate if exceeds 1000 characters to avoid API errors
         if (strlen($fullPrompt) > 1000) {
-            $fullPrompt = substr($fullPrompt, 0, 997) . '...';
+            $fullPrompt = substr($fullPrompt, 0, 997).'...';
 
             Log::warning('GeminiBrainService: Prompt truncated to 1000 characters', [
                 'original_length' => strlen($fullPrompt),
@@ -1071,7 +1113,7 @@ PROMPT;
         }
 
         // If not upper-body shot, return original outfit
-        if (!$isUpperBody) {
+        if (! $isUpperBody) {
             return $outfit;
         }
 
@@ -1103,9 +1145,9 @@ PROMPT;
         $filtered = $outfit;
         foreach ($lowerBodyKeywords as $keyword) {
             // Remove keyword with preceding adjectives (e.g., "espadrille sandals" not just "sandals")
-            $filtered = preg_replace('/\b[\w-]+\s+' . preg_quote($keyword, '/') . '\b/i', '', $filtered);
+            $filtered = preg_replace('/\b[\w-]+\s+'.preg_quote($keyword, '/').'\b/i', '', $filtered);
             // Also remove standalone keyword
-            $filtered = preg_replace('/\b' . preg_quote($keyword, '/') . '\b/i', '', $filtered);
+            $filtered = preg_replace('/\b'.preg_quote($keyword, '/').'\b/i', '', $filtered);
         }
 
         // Clean up leftover punctuation and words
@@ -1139,6 +1181,7 @@ PROMPT;
                 return true;
             }
         }
+
         return false;
     }
 
@@ -1161,12 +1204,13 @@ PROMPT;
                 $describesHair = true;
             }
 
-            if (!$describesHair) {
+            if (! $describesHair) {
                 $kept[] = $sentence;
             }
         }
 
         $result = implode(' ', $kept);
+
         return $this->cleanupPunctuation($result);
     }
 
@@ -1179,6 +1223,7 @@ PROMPT;
         $text = preg_replace('/,\s*$/', '', $text);
         $text = preg_replace('/^\s*,/', '', $text);
         $text = preg_replace('/\s+/', ' ', $text);
+
         return trim($text);
     }
 
@@ -1267,12 +1312,10 @@ PROMPT;
      * Get current outfit based on time of day.
      *
      * @deprecated Use WardrobeService::getTodaysOutfit() instead
-     * @param int $personaId
-     * @return string|null
      */
     private function getCurrentOutfit(int $personaId): ?string
     {
-        $cacheKey = $personaId . '_' . now()->format('H');
+        $cacheKey = $personaId.'_'.now()->format('H');
 
         if (isset($this->outfitCache[$cacheKey])) {
             return $this->outfitCache[$cacheKey];
@@ -1288,6 +1331,7 @@ PROMPT;
             ->value('value');
 
         $this->outfitCache[$cacheKey] = $outfit;
+
         return $outfit;
     }
 
@@ -1301,9 +1345,9 @@ PROMPT;
      * Call Gemini API with retry logic for overload handling.
      * Supports multimodal input (text + image) when imagePath is provided.
      *
-     * @param mixed $client Gemini client instance
-     * @param string $prompt Text prompt for generation
-     * @param string|null $imagePath Optional path to image file for vision analysis
+     * @param  mixed  $client  Gemini client instance
+     * @param  string  $prompt  Text prompt for generation
+     * @param  string|null  $imagePath  Optional path to image file for vision analysis
      * @return string Generated text response
      */
     private function callGeminiWithRetry($client, string $prompt, ?string $imagePath = null): string
@@ -1327,7 +1371,7 @@ PROMPT;
 
                     // Use HTTP API directly for multimodal (SDK has compatibility issues)
                     $apiKey = config('services.gemini.api_key');
-                    $url = "https://generativelanguage.googleapis.com/v1beta/models/" . config('services.gemini.model') . ":generateContent?key={$apiKey}";
+                    $url = 'https://generativelanguage.googleapis.com/v1beta/models/'.config('services.gemini.model').":generateContent?key={$apiKey}";
 
                     $payload = [
                         'contents' => [
@@ -1353,13 +1397,14 @@ PROMPT;
                         Log::info('GeminiBrainService: Multimodal response received', [
                             'response_length' => strlen($text),
                         ]);
+
                         return $text;
                     } else {
                         Log::error('GeminiBrainService: Multimodal API failed', [
                             'status' => $httpResponse->status(),
                             'body' => $httpResponse->body(),
                         ]);
-                        throw new \Exception('Gemini multimodal API failed: ' . $httpResponse->body());
+                        throw new \Exception('Gemini multimodal API failed: '.$httpResponse->body());
                     }
                 } else {
                     // Standard text-only generation
@@ -1373,15 +1418,17 @@ PROMPT;
                 $isOverloaded = str_contains($errorMessage, 'overloaded') || str_contains($errorMessage, 'rate limit');
 
                 if ($isOverloaded && $attempt < self::MAX_RETRIES) {
-                    Log::warning("GeminiBrainService: Model overloaded, retrying in {$retryDelay}s (attempt {$attempt}/" . self::MAX_RETRIES . ")");
+                    Log::warning("GeminiBrainService: Model overloaded, retrying in {$retryDelay}s (attempt {$attempt}/".self::MAX_RETRIES.')');
                     sleep($retryDelay);
                     $retryDelay *= 2; // Exponential backoff
+
                     continue;
                 }
 
                 if ($isOverloaded) {
                     Log::error('GeminiBrainService: Max retries reached, model still overloaded');
-                    return "Ada hal sikit... Cuba sekejap lagi ya? 😊";
+
+                    return 'Ada hal sikit... Cuba sekejap lagi ya? 😊';
                 }
 
                 // Log vision-specific errors separately
@@ -1396,7 +1443,7 @@ PROMPT;
             }
         }
 
-        return "Ada hal sikit... Cuba sekejap lagi ya? 😊";
+        return 'Ada hal sikit... Cuba sekejap lagi ya? 😊';
     }
 
     /**
@@ -1436,7 +1483,7 @@ PROMPT;
 
         try {
             // Use HTTP API for function calling (SDK may have limited support)
-            $url = "https://generativelanguage.googleapis.com/v1beta/models/" . config('services.gemini.model') . ":generateContent?key={$apiKey}";
+            $url = 'https://generativelanguage.googleapis.com/v1beta/models/'.config('services.gemini.model').":generateContent?key={$apiKey}";
 
             // Build request payload
             $parts = [['text' => $prompt]];
@@ -1469,11 +1516,12 @@ PROMPT;
 
             $httpResponse = Http::timeout(60)->post($url, $payload);
 
-            if (!$httpResponse->successful()) {
+            if (! $httpResponse->successful()) {
                 Log::error('GeminiBrainService: Function calling API failed', [
                     'status' => $httpResponse->status(),
                     'body' => $httpResponse->body(),
                 ]);
+
                 // Fallback to standard call
                 return $this->callGeminiWithRetry($client, $prompt, $imagePath);
             }
@@ -1481,8 +1529,9 @@ PROMPT;
             $data = $httpResponse->json();
             $candidate = $data['candidates'][0] ?? null;
 
-            if (!$candidate) {
+            if (! $candidate) {
                 Log::warning('GeminiBrainService: No candidate in function calling response');
+
                 return $this->callGeminiWithRetry($client, $prompt, $imagePath);
             }
 
@@ -1520,7 +1569,7 @@ PROMPT;
                 ]);
 
                 // Create event in database
-                $scheduledAt = \Carbon\Carbon::parse($time);
+                $scheduledAt = Carbon::parse($time);
                 $contextPrompt = "User has an event now: {$topic}. Send a natural, caring message checking on them or wishing them luck.";
 
                 EventSchedule::create([
@@ -1574,9 +1623,11 @@ PROMPT;
                     $finalData = $finalResponse->json();
                     $text = $finalData['candidates'][0]['content']['parts'][0]['text'] ?? '';
                     Log::info('GeminiBrainService: Final text response received after function call');
+
                     return $text;
                 } else {
                     Log::error('GeminiBrainService: Failed to get final response after function call');
+
                     return "Okay, I'll remind you! 💕";
                 }
             }
@@ -1603,8 +1654,7 @@ PROMPT;
      * Get relevant memory tags using tiered loading strategy.
      * Prevents context pollution by only loading necessary facts.
      *
-     * @param Persona $persona
-     * @param string $userMessage The latest user message for keyword analysis
+     * @param  string  $userMessage  The latest user message for keyword analysis
      * @return Collection Filtered memory tags
      */
     private function getRelevantMemoryTags(Persona $persona, string $userMessage): Collection
@@ -1674,7 +1724,7 @@ PROMPT;
             }
         }
 
-        if (!empty($matchedCategories)) {
+        if (! empty($matchedCategories)) {
             $matchedCategories = array_unique($matchedCategories);
             $keywordTags = $persona->memoryTags()
                 ->whereIn('category', $matchedCategories)
@@ -1703,7 +1753,7 @@ PROMPT;
     private function buildMemoryContext(Collection $memoryTags): string
     {
         if ($memoryTags->isEmpty()) {
-            return "No stored memories yet.";
+            return 'No stored memories yet.';
         }
 
         // Separate outfit tags from other memories
@@ -1712,17 +1762,17 @@ PROMPT;
         $userFacts = $memoryTags
             ->where('target', 'user')
             ->whereNotIn('category', $outfitCategories)
-            ->map(fn($tag) => "- {$tag->category}: {$tag->value}")
+            ->map(fn ($tag) => "- {$tag->category}: {$tag->value}")
             ->join("\n");
 
         $selfFacts = $memoryTags
             ->where('target', 'self')
             ->whereNotIn('category', $outfitCategories)
-            ->map(fn($tag) => "- {$tag->category}: {$tag->value}")
+            ->map(fn ($tag) => "- {$tag->category}: {$tag->value}")
             ->join("\n");
 
-        $context = "What you know about the user:\n" . ($userFacts ?: "Nothing yet.");
-        $context .= "\n\nWhat you know about yourself:\n" . ($selfFacts ?: "Nothing yet.");
+        $context = "What you know about the user:\n".($userFacts ?: 'Nothing yet.');
+        $context .= "\n\nWhat you know about yourself:\n".($selfFacts ?: 'Nothing yet.');
 
         // Add current outfit context
         $currentOutfit = $this->getCurrentOutfitFromMemory($memoryTags);
@@ -1754,12 +1804,13 @@ PROMPT;
     private function buildConversationHistory(Collection $chatHistory): string
     {
         if ($chatHistory->isEmpty()) {
-            return "No conversation history.";
+            return 'No conversation history.';
         }
 
         return $chatHistory
             ->map(function ($message) {
                 $sender = $message->sender_type === 'user' ? 'User' : 'Assistant';
+
                 return "{$sender}: {$message->content}";
             })
             ->join("\n");
@@ -1779,7 +1830,7 @@ PROMPT;
         // Voice note instructions
         $voiceFreq = $persona->voice_frequency ?? 'moderate';
         if ($voiceFreq !== 'never') {
-            $voiceGuidance = match($voiceFreq) {
+            $voiceGuidance = match ($voiceFreq) {
                 'rare' => 'Use voice notes VERY SPARINGLY - only for extremely special, emotional moments (birthdays, milestones, deeply heartfelt messages).',
                 'moderate' => 'Use voice notes OCCASIONALLY for intimate or emotional messages - but prefer text most of the time. Use only when it truly adds value.',
                 'frequent' => 'You can use voice notes for emotional, intimate, or expressive messages when text doesn\'t capture the right feeling.',
@@ -1797,7 +1848,7 @@ VOICE;
         // Image generation instructions
         $imageFreq = $persona->image_frequency ?? 'moderate';
         if ($imageFreq !== 'never') {
-            $imageGuidance = match($imageFreq) {
+            $imageGuidance = match ($imageFreq) {
                 'rare' => 'Generate images VERY RARELY - only when user explicitly asks for photos/selfies.',
                 'moderate' => 'Generate images OCCASIONALLY when conversation naturally calls for it (user asks for photo/selfie, or specific visual situations).',
                 'frequent' => 'You can generate images when it makes sense in the conversation or to enhance emotional connection.',

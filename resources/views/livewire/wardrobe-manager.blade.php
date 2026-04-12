@@ -46,7 +46,7 @@
                 @if($activeTab === 'wardrobe')
                 <!-- Outfit Slots Grid -->
                 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            @foreach($slots as $slotName => $slotInfo)
+            @foreach($wardrobeSlots as $slotName => $slotInfo)
                 <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
                     <div class="p-6">
                         <!-- Slot Header -->
@@ -355,9 +355,9 @@
                             <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
                                 @foreach($selections as $slotName => $selection)
                                     <div class="flex items-start space-x-3 p-3 bg-gray-50 dark:bg-gray-600 rounded">
-                                        <div class="text-2xl">{{ $slots[$slotName]['icon'] ?? '👔' }}</div>
+                                        <div class="text-2xl">{{ $wardrobeSlots[$slotName]['icon'] ?? '👔' }}</div>
                                         <div class="flex-1 min-w-0">
-                                            <div class="text-xs text-gray-500 dark:text-gray-400 uppercase">{{ $slots[$slotName]['label'] ?? $slotName }}</div>
+                                            <div class="text-xs text-gray-500 dark:text-gray-400 uppercase">{{ $wardrobeSlots[$slotName]['label'] ?? $slotName }}</div>
                                             <div class="text-sm text-gray-900 dark:text-gray-100 mt-1">{{ $selection->wardrobeItem->description ?? 'N/A' }}</div>
                                             @if($selection->wardrobeItem && $selection->wardrobeItem->is_primary)
                                                 <span class="inline-flex items-center px-2 py-0.5 text-xs font-medium text-yellow-800 bg-yellow-100 rounded mt-1">⭐ Primary</span>
@@ -410,14 +410,14 @@
                                 <div class="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-600 rounded">
                                     <div class="flex-1">
                                         <div class="flex items-center space-x-2">
-                                            <span class="text-xl">{{ $slots[$outfit->slot_name]['icon'] ?? '👔' }}</span>
+                                            <span class="text-xl">{{ $wardrobeSlots[$outfit->slot_name]['icon'] ?? '👔' }}</span>
                                             <span class="text-sm text-gray-900 dark:text-gray-100">{{ $outfit->description }}</span>
                                             @if($outfit->is_primary)
                                                 <span class="inline-flex items-center px-2 py-0.5 text-xs font-medium text-yellow-800 bg-yellow-100 rounded">⭐</span>
                                             @endif
                                         </div>
                                         <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                                            {{ $slots[$outfit->slot_name]['label'] ?? $outfit->slot_name }}
+                                            {{ $wardrobeSlots[$outfit->slot_name]['label'] ?? $outfit->slot_name }}
                                             @if($outfit->last_worn_at)
                                                 • Last worn {{ $outfit->last_worn_at->diffForHumans() }}
                                             @endif
@@ -448,11 +448,11 @@
                                 <div class="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-600 rounded">
                                     <div class="flex-1">
                                         <div class="flex items-center space-x-2">
-                                            <span class="text-xl">{{ $slots[$outfit->slot_name]['icon'] ?? '👔' }}</span>
+                                            <span class="text-xl">{{ $wardrobeSlots[$outfit->slot_name]['icon'] ?? '👔' }}</span>
                                             <span class="text-sm text-gray-900 dark:text-gray-100">{{ $outfit->description }}</span>
                                         </div>
                                         <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                                            {{ $slots[$outfit->slot_name]['label'] ?? $outfit->slot_name }}
+                                            {{ $wardrobeSlots[$outfit->slot_name]['label'] ?? $outfit->slot_name }}
                                             @if($outfit->last_worn_at)
                                                 • Last worn {{ $outfit->last_worn_at->diffForHumans() }}
                                             @endif
@@ -479,10 +479,10 @@
                         <div class="space-y-3">
                             @foreach($analytics['unworn'] as $outfit)
                                 <div class="flex items-center space-x-3 p-3 bg-gray-50 dark:bg-gray-600 rounded">
-                                    <span class="text-xl">{{ $slots[$outfit->slot_name]['icon'] ?? '👔' }}</span>
+                                    <span class="text-xl">{{ $wardrobeSlots[$outfit->slot_name]['icon'] ?? '👔' }}</span>
                                     <div class="flex-1">
                                         <div class="text-sm text-gray-900 dark:text-gray-100">{{ $outfit->description }}</div>
-                                        <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">{{ $slots[$outfit->slot_name]['label'] ?? $outfit->slot_name }}</div>
+                                        <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">{{ $wardrobeSlots[$outfit->slot_name]['label'] ?? $outfit->slot_name }}</div>
                                     </div>
                                 </div>
                             @endforeach
