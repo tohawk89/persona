@@ -6,6 +6,8 @@ use Livewire\Component;
 use App\Models\Persona;
 use App\Models\MemoryTag;
 use Illuminate\Support\Facades\Auth;
+use App\Facades\Brain;
+use Illuminate\Support\Facades\Log;
 
 class MemoryBrain extends Component
 {
@@ -91,6 +93,104 @@ class MemoryBrain extends Component
         session()->flash('success', 'Memory deleted successfully!');
     }
 
+    public function organizeMemoryTags()
+    {
+        try {
+            $memories = $this->persona->memoryTags;
+
+            if ($memories->count() === 0) {
+                session()->flash('error', 'No memory tags to organize.');
+                return;
+            }
+
+            // Process in batches of 10 to avoid AI token limits
+            $batches = $memories->chunk(10);
+            $totalKept = 0;
+            $totalMerged = 0;
+            $totalUpdated = 0;
+
+            foreach ($batches as $batch) {
+                $tagsList = $batch->map(fn($tag) => [
+                    'id' => $tag->id,
+                    'category' => $tag->category,
+                    'target' => $tag->target,
+                    'value' => $tag->value,
+                ])->toArray();
+
+                $tagsJson = json_encode($tagsList);
+
+                $prompt = <<<PROMPT
+ Analyze these memory tags and organize them.
+
+TAGS: {$tagsJson}
+
+RULES:
+1. Merge duplicates (e.g., \"Korean\", \"nationality: korean\" → merge)
+2. Importance scores: 10=identity, 8-9=traits, 5-7=facts, 3-4=minor, 1-2=trivial
+
+Return JSON array with ALL tags:
+[{\"action\": \"keep\", \"id\": 1, \"importance\": 10}]
+
+Actions: keep, merge (needs merge_into_id), update (needs new_value)
+PROMPT;
+
+                $response = Brain::generate($prompt);
+
+                // Clean response
+                $response = trim($response);
+                $response = preg_replace('/^```(json)?\s*/i', '', $response);
+                $response = preg_replace('/\s*```$/i', '', $response);
+
+                // Extract JSON
+                if (preg_match('/\[.*\]/s', $response, $matches)) {
+                    $response = $matches[0];
+                }
+
+                $instructions = json_decode($response, true);
+
+                if (!is_array($instructions)) {
+                    Log::warning('MemoryBrain: Batch parse failed', ['error' => json_last_error_msg()]);
+                    continue;
+                }
+
+                foreach ($instructions as $inst) {
+                    $tag = MemoryTag::find($inst['id'] ?? null);
+                    if (!$tag) continue;
+
+                    switch ($inst['action'] ?? 'keep') {
+                        case 'keep':
+                            $tag->update([
+                                'importance' => $inst['importance'] ?? 5,
+                                'last_consolidated_at' => now(),
+                            ]);
+                            $totalKept++;
+                            break;
+
+                        case 'merge':
+                        case 'delete':
+                            $tag->delete();
+                            $totalMerged++;
+                            break;
+
+                        case 'update':
+                            $tag->update([
+                                'value' => $inst['new_value'] ?? $tag->value,
+                                'importance' => $inst['importance'] ?? 5,
+                                'last_consolidated_at' => now(),
+                            ]);
+                            $totalUpdated++;
+                            break;
+                    }
+                }
+            }
+
+            session()->flash('success', "Tags organized! {$totalKept} kept, {$totalUpdated} updated, {$totalMerged} removed.");
+        } catch (\Exception $e) {
+            Log::error('MemoryBrain: Organization failed', ['error' => $e->getMessage()]);
+            session()->flash('error', 'Failed to organize tags.');
+        }
+    }
+
     private function resetForm()
     {
         $this->editingId = null;
@@ -102,7 +202,10 @@ class MemoryBrain extends Component
 
     public function render()
     {
-        $memories = $this->persona->memoryTags()->latest()->get();
+        $memories = $this->persona->memoryTags()
+            ->orderByRaw('importance IS NULL, importance DESC')
+            ->latest()
+            ->get();
 
         return view('livewire.memory-brain', [
             'memories' => $memories,

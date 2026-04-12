@@ -148,7 +148,7 @@
                 <form wire:submit.prevent="sendMessage" class="flex items-end space-x-3">
                     <div class="flex-1">
                         <textarea
-                            wire:model.live="inputMessage"
+                            wire:model="inputMessage"
                             @keydown.enter.prevent="if (!$event.shiftKey) { $wire.sendMessage(); }"
                             rows="2"
                             placeholder="Type your message... (Enter to send, Shift+Enter for new line)"

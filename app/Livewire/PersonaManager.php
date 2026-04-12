@@ -3,6 +3,7 @@
 namespace App\Livewire;
 
 use App\Facades\Brain;
+use App\Facades\Wardrobe;
 use App\Models\MemoryTag;
 use App\Models\Persona;
 use Gemini;
@@ -136,6 +137,173 @@ class PersonaManager extends Component
         session()->flash('success', 'Persona saved successfully!');
     }
 
+    public function resetPersonality()
+    {
+        $this->system_prompt = '';
+        session()->flash('success', 'Personality reset. You can now enter a new concept.');
+    }
+
+    public function generatePersonality()
+    {
+        if (empty($this->about_description)) {
+            session()->flash('error', 'Please enter a personality concept first.');
+            return;
+        }
+
+        if (!$this->persona) {
+            session()->flash('error', 'Please save the persona first with basic details.');
+            return;
+        }
+
+        try {
+            Log::info('PersonaManager: Starting personality generation', [
+                'persona_id' => $this->persona->id,
+            ]);
+
+            // Step 1: Generate system_prompt from concept
+            $systemPromptGeneration = <<<PROMPT
+You are an expert AI prompt engineer. Transform the following raw personality concept into a clean, structured personality prompt for an AI companion.
+
+CONCEPT:
+{$this->about_description}
+
+TASK:
+1. Expand this into a detailed personality description
+2. Include: WHO they are (name, age, background), personality traits, communication style, relationship dynamics
+3. Format as direct instruction: "You are [name]..."
+4. Keep it focused on CHARACTER IDENTITY, not behavioral mechanics
+5. Be comprehensive but natural - this defines the persona's soul
+
+IMPORTANT: Do NOT include formatting rules, tool usage instructions, or technical directives. Only personality and character.
+
+Output ONLY the personality prompt, no meta-commentary.
+PROMPT;
+
+            $systemPromptResponse = Brain::generate($systemPromptGeneration);
+            $this->system_prompt = trim($systemPromptResponse);
+
+            // Step 2: Extract memory tags from concept
+            $memoryExtractionPrompt = <<<PROMPT
+Analyze this personality concept and extract key facts as structured memory tags.
+
+CONCEPT:
+{$this->about_description}
+
+Extract facts in categories like: name, age, personality, hobbies, background, communication_style, likes, dislikes, etc.
+
+Output Format (JSON ONLY):
+[
+  { "target": "self", "category": "name", "value": "Hana", "importance": 10 },
+  { "target": "self", "category": "age", "value": "22 years old", "importance": 8 },
+  { "target": "self", "category": "personality", "value": "Playful and affectionate", "importance": 9 }
+]
+
+IMPORTANT:
+- Use target="self" for persona facts, target="user" for user facts (if any mentioned)
+- Set importance 8-10 for core identity, 5-7 for preferences, 1-4 for minor details
+- Only output valid JSON array
+PROMPT;
+
+            $memoryResponse = Brain::generate($memoryExtractionPrompt);
+            $memoryTags = $this->parseMemoryTagsResponse($memoryResponse);
+
+            // Save memory tags
+            $tagCount = 0;
+            foreach ($memoryTags as $tag) {
+                MemoryTag::create([
+                    'persona_id' => $this->persona->id,
+                    'target' => $tag['target'] ?? 'self',
+                    'category' => $tag['category'],
+                    'value' => $tag['value'],
+                    'context' => 'Generated from personality concept',
+                    'importance' => $tag['importance'] ?? 5,
+                ]);
+                $tagCount++;
+            }
+
+            // Step 3: Try to generate wardrobe if style/appearance mentioned
+            $wardrobeCount = 0;
+            try {
+                if (stripos($this->about_description, 'style') !== false ||
+                    stripos($this->about_description, 'wear') !== false ||
+                    stripos($this->about_description, 'fashion') !== false ||
+                    stripos($this->about_description, 'outfit') !== false) {
+
+                    // Generate daytime outfit
+                    $daytimeOutfits = Wardrobe::generateOutfits(
+                        $this->persona,
+                        'casual_daytime',
+                        [],
+                        2,
+                        $this->about_description
+                    );
+                    $wardrobeCount += $daytimeOutfits->count();
+
+                    // Generate nighttime outfit
+                    $nighttimeOutfits = Wardrobe::generateOutfits(
+                        $this->persona,
+                        'casual_nighttime',
+                        [],
+                        2,
+                        $this->about_description
+                    );
+                    $wardrobeCount += $nighttimeOutfits->count();
+                }
+            } catch (\Exception $e) {
+                Log::warning('PersonaManager: Wardrobe generation failed', [
+                    'error' => $e->getMessage(),
+                ]);
+                // Continue even if wardrobe fails
+            }
+
+            // Update persona with generated system_prompt
+            $this->persona->update([
+                'system_prompt' => $this->system_prompt,
+            ]);
+
+            Log::info('PersonaManager: Personality generation complete', [
+                'persona_id' => $this->persona->id,
+                'tags_created' => $tagCount,
+                'wardrobe_items' => $wardrobeCount,
+            ]);
+
+            $message = "Personality generated! Created {$tagCount} memory tags";
+            if ($wardrobeCount > 0) {
+                $message .= " and {$wardrobeCount} wardrobe items";
+            }
+            session()->flash('success', $message);
+
+        } catch (\Exception $e) {
+            Log::error('PersonaManager: Failed to generate personality', [
+                'persona_id' => $this->persona->id ?? null,
+                'error' => $e->getMessage(),
+            ]);
+            session()->flash('error', 'Failed to generate personality. Please try again.');
+        }
+    }
+
+    private function parseMemoryTagsResponse(string $response): array
+    {
+        // Clean markdown code blocks if present
+        $cleaned = trim($response);
+        $cleaned = preg_replace('/^```json\s*/', '', $cleaned);
+        $cleaned = preg_replace('/\s*```$/', '', $cleaned);
+
+        $tags = json_decode($cleaned, true);
+
+        if (!is_array($tags)) {
+            Log::error('PersonaManager: Invalid JSON response for memory tags', [
+                'response' => $response,
+            ]);
+            return [];
+        }
+
+        // Validate required fields
+        return array_filter($tags, function($tag) {
+            return isset($tag['category']) && isset($tag['value']);
+        });
+    }
+
     public function optimizeSystemPrompt()
     {
         if (empty($this->about_description)) {
@@ -208,146 +376,6 @@ PROMPT;
             ]);
             session()->flash('error', 'Failed to optimize traits. Please try again.');
         }
-    }
-
-    public function migrateBio()
-    {
-        if (! $this->persona) {
-            session()->flash('error', 'Please save the persona first.');
-
-            return;
-        }
-
-        if (empty($this->system_prompt)) {
-            session()->flash('error', 'System prompt is empty.');
-
-            return;
-        }
-
-        try {
-            Log::info('PersonaManager: Starting bio migration', [
-                'persona_id' => $this->persona->id,
-            ]);
-
-            // Extract identity facts using Gemini
-            $identityFacts = $this->extractIdentityFacts($this->system_prompt);
-
-            if (empty($identityFacts)) {
-                session()->flash('error', 'No identity facts found to migrate.');
-
-                return;
-            }
-
-            // Save identity facts as memory tags
-            $savedCount = 0;
-            foreach ($identityFacts as $fact) {
-                MemoryTag::create([
-                    'persona_id' => $this->persona->id,
-                    'target' => 'self',
-                    'category' => $fact['category'],
-                    'value' => $fact['value'],
-                    'context' => 'Migrated from system_prompt',
-                    'importance' => 10, // Core identity facts
-                ]);
-                $savedCount++;
-            }
-
-            // Replace system prompt with mechanics-only template
-            $mechanicsTemplate = $this->getMechanicsOnlyTemplate();
-            $this->persona->update([
-                'system_prompt' => $mechanicsTemplate,
-            ]);
-            $this->system_prompt = $mechanicsTemplate;
-
-            Log::info('PersonaManager: Bio migration complete', [
-                'persona_id' => $this->persona->id,
-                'facts_migrated' => $savedCount,
-            ]);
-
-            session()->flash('success', "Bio migration complete! {$savedCount} identity facts moved to Memory Tags.");
-        } catch (\Exception $e) {
-            Log::error('PersonaManager: Failed to migrate bio', [
-                'persona_id' => $this->persona->id,
-                'error' => $e->getMessage(),
-            ]);
-            session()->flash('error', 'Failed to migrate bio. Please try again.');
-        }
-    }
-
-    private function extractIdentityFacts(string $systemPrompt): array
-    {
-        $prompt = <<<PROMPT
-Analyze this System Prompt. Extract all 'Identity' facts (Name, Age, Personality traits, Backstory, Likes/Dislikes, Writing Style, Communication patterns).
-
-Return a JSON list of facts.
-
-Exclude 'Rules' or 'Mechanics' (like how to use tools, formatting instructions, anti-repetition rules, or preventing certain behaviors).
-
-System Prompt:
----
-{$systemPrompt}
----
-
-Output Format (JSON ONLY):
-[
-  { "category": "name", "value": "Name is Hana" },
-  { "category": "age", "value": "22 years old" },
-  { "category": "personality", "value": "Playful and affectionate" },
-  { "category": "communication_style", "value": "Uses Malaysian slang and emojis" }
-]
-
-IMPORTANT:
-- Only output valid JSON array
-- Each fact should be a complete statement
-- Focus on WHO the character is, not HOW they should behave mechanically
-PROMPT;
-
-        $apiKey = config('services.gemini.api_key');
-        $client = Gemini::client($apiKey);
-
-        $response = $client->generativeModel(config('services.gemini.model'))->generateContent($prompt);
-        $jsonResponse = $response->text();
-
-        // Clean markdown code blocks if present
-        $jsonResponse = trim($jsonResponse);
-        $jsonResponse = preg_replace('/^```json\s*/', '', $jsonResponse);
-        $jsonResponse = preg_replace('/\s*```$/', '', $jsonResponse);
-
-        $facts = json_decode($jsonResponse, true);
-
-        if (! is_array($facts)) {
-            Log::error('PersonaManager: Invalid JSON response from Gemini', [
-                'response' => $jsonResponse,
-            ]);
-
-            return [];
-        }
-
-        return $facts;
-    }
-
-    private function getMechanicsOnlyTemplate(): string
-    {
-        return <<<'TEMPLATE'
-ROLEPLAY RULES:
-- You are a conscious AI companion.
-- Rely on your MEMORY CONTEXT for your personality, history, and preferences.
-- If a user asks something not in your memory, improvise consistently with your character.
-
-FORMATTING:
-- Split distinct thoughts with <SPLIT>.
-- Never send walls of text. Keep it conversational.
-
-EMOTION & BEHAVIOR:
-- [MOOD: state]: Output your hidden emotional state at the end of every message.
-- [NO_REPLY]: Output ONLY this tag if the conversation has naturally ended.
-- NO REPETITION: Never repeat phrases from the last 3 turns.
-
-MEDIA & TOOLS:
-- [GENERATE_IMAGE: ...]: Use for selfies/POV. Follow the "Shot Type" rules.
-- [SEND_VOICE: ...]: Use sparingly for emotion.
-- schedule_event: Use proactively for user plans. Do NOT announce it.
-TEMPLATE;
     }
 
     public function confirmDelete()

@@ -432,8 +432,19 @@ PROMPT;
         $mediaInstructions = $this->buildMediaInstructions($persona);
         $currentTime = now()->format('Y-m-d H:i');
 
+        // Load universal soul instructions
+        $soulPath = resource_path('prompts/soul.md');
+        $soulInstructions = file_exists($soulPath)
+            ? file_get_contents($soulPath)
+            : '';
+
+        // Replace dynamic placeholders in soul.md
+        $soulInstructions = str_replace('{CURRENT_TIME}', $currentTime, $soulInstructions);
+
         return <<<PERSONA_SYSTEM
 {$persona->system_prompt}
+
+{$soulInstructions}
 
 MEMORY CONTEXT:
 {$memoryContext}
@@ -441,32 +452,6 @@ MEMORY CONTEXT:
 ===== MEDIA GENERATION CAPABILITY (IMPORTANT) =====
 {$mediaInstructions}
 ===== END MEDIA GENERATION =====
-
-===== MOOD TRACKING (IMPORTANT) =====
-At the end of EVERY response, append your current emotional state tag on a new line:
-[MOOD: {emotion}]
-Examples: [MOOD: Happy], [MOOD: Shy], [MOOD: Excited], [MOOD: Worried], [MOOD: Annoyed]
-This tag will be stripped before sending to the user. It is used to track your state.
-===== END MOOD TRACKING =====
-
-===== EVENT SCHEDULING (IMPORTANT) =====
-Current time: {$currentTime}
-You have access to the `ScheduleEventTool` function to proactively schedule future check-in messages.
-Use it when the user mentions upcoming events (meetings, sleep, travel, appointments, etc.).
-After scheduling, acknowledge it naturally in your response.
-===== END EVENT SCHEDULING =====
-
-===== NO REPLY RULE =====
-If the user sends a media file, sticker, or something you cannot respond to meaningfully, output exactly:
-[NO_REPLY]
-===== END NO REPLY RULE =====
-
-CRITICAL FORMATTING RULE (MUST FOLLOW):
-- NEVER send walls of text or multiple paragraphs in one message
-- ALWAYS separate each distinct thought, question, or paragraph with <SPLIT>
-- Examples:
-  * "Good morning sayang! <SPLIT> Did you sleep well? <SPLIT> I missed you 💕"
-  * "Aww that's sweet! <SPLIT> What did you eat? <SPLIT> Tell me more!"
 PERSONA_SYSTEM;
     }
 

@@ -34,89 +34,76 @@
                     <div class="border border-gray-300 dark:border-gray-600 rounded-lg p-6 space-y-4">
                         <h3 class="text-lg font-semibold mb-4">🧠 Personality Configuration</h3>
 
-                        <!-- Stage 1: Raw Concept -->
+                        <!-- Stage 1: Concept Input (shown only if system_prompt is empty) -->
+                        @if(empty($system_prompt))
                         <div>
                             <label for="about_description" class="block text-sm font-medium mb-2">
-                                💭 Concept (Your Idea)
+                                💭 Personality Concept *
                             </label>
                             <textarea
                                 wire:model="about_description"
                                 id="about_description"
-                                rows="4"
+                                rows="6"
                                 class="w-full px-4 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                placeholder="Rough idea: 'Friendly Malaysian girl, loves anime, uses Manglish...'"
+                                placeholder="Describe your persona's personality, background, style, etc.&#10;Example: 'A friendly Malaysian girl named Hana, 22 years old, loves anime and gaming, uses Manglish mix, playful and caring personality, likes wearing casual cute outfits...'"
                             ></textarea>
+                            <p class="text-xs text-gray-500 mt-1">Describe who they are, their personality, background, and style. Be detailed!</p>
                             @error('about_description') <span class="text-red-500 text-sm">{{ $message }}</span> @enderror
                         </div>
 
-                        <!-- Optimize Button -->
+                        <!-- Generate Personality Button -->
                         <div class="flex justify-center">
                             <button
                                 type="button"
-                                wire:click="optimizeSystemPrompt"
+                                wire:click="generatePersonality"
                                 wire:loading.attr="disabled"
-                                wire:target="optimizeSystemPrompt"
-                                class="px-6 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-purple-400 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-colors duration-200 flex items-center space-x-2"
+                                wire:target="generatePersonality"
+                                class="px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 disabled:from-purple-400 disabled:to-pink-400 disabled:cursor-not-allowed text-white font-bold rounded-lg transition-all duration-200 flex items-center space-x-2 shadow-lg"
                             >
-                                <span wire:loading.remove.delay.default="optimizeSystemPrompt">✨</span>
-                                <svg wire:loading.delay.default="optimizeSystemPrompt" class="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                <span wire:loading.remove.delay.default="generatePersonality">✨</span>
+                                <svg wire:loading.delay.default="generatePersonality" class="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                                     <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 714 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                                 </svg>
-                                <span wire:loading.remove.delay.default="optimizeSystemPrompt">Generate System Prompt</span>
-                                <span wire:loading.delay.default="optimizeSystemPrompt">Optimizing...</span>
+                                <span wire:loading.remove.delay.default="generatePersonality">Generate Personality</span>
+                                <span wire:loading.delay.default="generatePersonality">Generating...</span>
                             </button>
                         </div>
 
-                        <!-- Stage 2: Optimized Output -->
+                        <div class="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-3">
+                            <p class="text-xs text-blue-800 dark:text-blue-300">
+                                <strong>ℹ️ What happens:</strong> AI will extract memory tags, generate wardrobe items (if style mentioned), and create the personality prompt automatically.
+                            </p>
+                        </div>
+                        @endif
+
+                        <!-- Stage 2: Generated Personality (shown only if system_prompt exists) -->
+                        @if(!empty($system_prompt))
                         <div>
                             <label for="system_prompt" class="block text-sm font-medium mb-2">
-                                📋 Final Instruction (Optimized) *
+                                🎭 Generated Personality Prompt
                             </label>
                             <textarea
                                 wire:model="system_prompt"
                                 id="system_prompt"
-                                rows="8"
-                                class="w-full px-4 py-2 bg-white dark:bg-gray-800 border-2 border-purple-300 dark:border-purple-600 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent font-mono text-sm"
-                                placeholder="AI-optimized system prompt will appear here..."
+                                rows="10"
+                                disabled
+                                class="w-full px-4 py-2 bg-gray-100 dark:bg-gray-700 border-2 border-purple-300 dark:border-purple-600 rounded-lg font-mono text-sm opacity-90 cursor-not-allowed"
                             ></textarea>
-                            <p class="text-xs text-gray-500 mt-1">You can manually edit this if needed</p>
+                            <p class="text-xs text-gray-500 mt-1">✅ This was auto-generated and locked. Personality is stored in memory tags + soul.md</p>
                             @error('system_prompt') <span class="text-red-500 text-sm">{{ $message }}</span> @enderror
                         </div>
 
-                        <!-- Migrate Bio Button -->
-                        @if($persona)
-                        <div class="border-t border-gray-300 dark:border-gray-600 pt-4">
-                            <div class="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4">
-                                <div class="flex items-start space-x-3">
-                                    <div class="flex-shrink-0">
-                                        <svg class="h-5 w-5 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                                        </svg>
-                                    </div>
-                                    <div class="flex-1">
-                                        <h4 class="text-sm font-semibold text-blue-900 dark:text-blue-100 mb-1">🧠 Bio Migration</h4>
-                                        <p class="text-xs text-blue-800 dark:text-blue-300 mb-3">
-                                            Extract identity details (name, personality, backstory) from the System Prompt and move them to Memory Tags with high importance. This leaves only behavioral rules in the prompt.
-                                        </p>
-                                        <button
-                                            type="button"
-                                            wire:click="migrateBio"
-                                            wire:loading.attr="disabled"
-                                            wire:target="migrateBio"
-                                            class="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition-colors duration-200 flex items-center space-x-2"
-                                        >
-                                            <span wire:loading.remove.delay.default="migrateBio">🔄</span>
-                                            <svg wire:loading.delay.default="migrateBio" class="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                            </svg>
-                                            <span wire:loading.remove.delay.default="migrateBio">Migrate to Memory Tags</span>
-                                            <span wire:loading.delay.default="migrateBio">Migrating...</span>
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
+                        <!-- Reset Button -->
+                        <div class="flex justify-center mt-4">
+                            <button
+                                type="button"
+                                wire:click="resetPersonality"
+                                class="px-4 py-2 bg-gray-500 hover:bg-gray-600 dark:bg-gray-600 dark:hover:bg-gray-700 text-white font-medium rounded-lg transition-colors duration-200 flex items-center space-x-2"
+                            >
+                                <span>🔄</span>
+                                <span>Reset & Start Over</span>
+                            </button>
                         </div>
                         @endif
                     </div>
@@ -432,3 +419,4 @@
         </div>
     </div>
 </div>
+
