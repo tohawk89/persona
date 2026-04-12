@@ -2,10 +2,11 @@
 
 namespace App\Console\Commands;
 
+use App\Facades\Brain;
+use App\Models\EventSchedule;
+use App\Models\Persona;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
-use App\Models\{Persona, EventSchedule, MemoryTag};
-use App\Facades\GeminiBrain;
 
 class GenerateDailyPlan extends Command
 {
@@ -38,6 +39,7 @@ class GenerateDailyPlan extends Command
 
         if ($personas->isEmpty()) {
             $this->warn('No active personas found.');
+
             return Command::SUCCESS;
         }
 
@@ -55,45 +57,16 @@ class GenerateDailyPlan extends Command
                     ->delete();
 
                 // Generate daily plan
-                $planData = GeminiBrain::generateDailyPlan(
+                $planData = Brain::generateDailyPlan(
                     $persona->memoryTags,
                     $persona->system_prompt,
                     $persona->wake_time,
                     $persona->sleep_time
                 );
 
-                // Save outfit choices to memory tags
-                if (!empty($planData['daily_outfit'])) {
-                    MemoryTag::updateOrCreate(
-                        [
-                            'persona_id' => $persona->id,
-                            'category' => 'daily_outfit',
-                            'target' => 'self',
-                        ],
-                        [
-                            'value' => $planData['daily_outfit'],
-                            'context' => 'Set on ' . now()->format('Y-m-d H:i'),
-                        ]
-                    );
-                }
-
-                if (!empty($planData['night_outfit'])) {
-                    MemoryTag::updateOrCreate(
-                        [
-                            'persona_id' => $persona->id,
-                            'category' => 'night_outfit',
-                            'target' => 'self',
-                        ],
-                        [
-                            'value' => $planData['night_outfit'],
-                            'context' => 'Set on ' . now()->format('Y-m-d H:i'),
-                        ]
-                    );
-                }
-
                 // Save events to database
                 $eventCount = 0;
-                foreach ($planData['events'] as $eventData) {
+                foreach ($planData as $eventData) {
                     EventSchedule::create([
                         'persona_id' => $persona->id,
                         'type' => $eventData['type'] === 'image_generation' ? 'image_generation' : 'text',
@@ -105,7 +78,6 @@ class GenerateDailyPlan extends Command
                 }
 
                 $this->line("  ✓ Created {$eventCount} events");
-                $this->line("  ✓ Outfit: {$planData['daily_outfit']}");
                 $successCount++;
 
             } catch (\Exception $e) {

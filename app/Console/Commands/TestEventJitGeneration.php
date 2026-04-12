@@ -2,9 +2,10 @@
 
 namespace App\Console\Commands;
 
+use App\Facades\Brain;
+use App\Models\EventSchedule;
+use App\Models\Persona;
 use Illuminate\Console\Command;
-use App\Models\{Persona, EventSchedule};
-use App\Facades\GeminiBrain;
 
 class TestEventJitGeneration extends Command
 {
@@ -29,8 +30,9 @@ class TestEventJitGeneration extends Command
         // Get the first persona
         $persona = Persona::with(['memoryTags', 'messages'])->first();
 
-        if (!$persona) {
+        if (! $persona) {
             $this->error('No persona found in database.');
+
             return Command::FAILURE;
         }
 
@@ -45,7 +47,7 @@ class TestEventJitGeneration extends Command
         if ($currentMood) {
             $this->line("✓ Current Mood: {$currentMood->value}");
         } else {
-            $this->line("⚠ No current mood set");
+            $this->line('⚠ No current mood set');
         }
 
         // Show recent chat context
@@ -63,7 +65,7 @@ class TestEventJitGeneration extends Command
                 $this->line("  - {$sender}: {$preview}...");
             }
         } else {
-            $this->line("⚠ No recent messages");
+            $this->line('⚠ No recent messages');
         }
 
         $this->newLine();
@@ -87,7 +89,7 @@ class TestEventJitGeneration extends Command
         $this->newLine();
 
         try {
-            $generatedResponse = GeminiBrain::generateEventResponse($tempEvent, $persona);
+            $generatedResponse = Brain::generateEventResponse($tempEvent, $persona);
 
             $this->info('✅ Generated Response:');
             $this->line('─────────────────────────────────────────');
@@ -116,6 +118,7 @@ class TestEventJitGeneration extends Command
 
         } catch (\Exception $e) {
             $this->error("❌ Generation failed: {$e->getMessage()}");
+
             return Command::FAILURE;
         }
     }

@@ -2,14 +2,16 @@
 
 namespace App\Jobs;
 
+use App\Facades\Brain;
+use App\Facades\SmartQueue;
+use App\Facades\Telegram;
+use App\Models\EventSchedule;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
-use App\Models\EventSchedule;
-use App\Facades\{SmartQueue, Telegram};
 
 class ProcessScheduledEvent implements ShouldQueue
 {
@@ -34,19 +36,20 @@ class ProcessScheduledEvent implements ShouldQueue
     {
         try {
             // Use SmartQueue to determine if event should execute or reschedule
-            $executed = SmartQueue::processEvent($this->event, function($event) {
+            $executed = SmartQueue::processEvent($this->event, function ($event) {
                 $user = $event->persona->user;
 
-                if (!$user || !$user->telegram_chat_id) {
+                if (! $user || ! $user->telegram_chat_id) {
                     Log::warning('ProcessScheduledEvent: User has no Telegram chat ID', [
                         'event_id' => $event->id,
                     ]);
+
                     return;
                 }
 
                 // ===== JUST-IN-TIME GENERATION =====
                 // Generate response dynamically based on current context
-                $generatedResponse = \App\Facades\GeminiBrain::generateEventResponse(
+                $generatedResponse = Brain::generateEventResponse(
                     $event,
                     $event->persona
                 );
@@ -84,7 +87,7 @@ class ProcessScheduledEvent implements ShouldQueue
                 ]);
             });
 
-            if (!$executed) {
+            if (! $executed) {
                 Log::info('ProcessScheduledEvent: Event rescheduled due to user activity', [
                     'event_id' => $this->event->id,
                     'new_scheduled_at' => $this->event->fresh()->scheduled_at,

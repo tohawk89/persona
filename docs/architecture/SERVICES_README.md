@@ -1,456 +1,783 @@
 # Service Layer Documentation
 
+> Last updated: April 2026. Reflects migration from google-gemini-php SDK to Laravel AI SDK.
+
 ## Overview
 
-The service layer implements the core business logic for the AI Virtual Companion system. It consists of three main services that handle AI communication, messaging, and intelligent event scheduling.
+Business logic lives in **services**, not controllers. All services are singletons registered in `AppServiceProvider` and accessed via facades or dependency injection.
+
+| Service | Facade | File |
+|---|---|---|
+| `BrainService` | `Brain::` | `app/Services/BrainService.php` |
+| `TelegramService` | `Telegram::` | `app/Services/TelegramService.php` |
+| `SmartQueueService` | `SmartQueue::` | `app/Services/SmartQueueService.php` |
+| `WardrobeService` | `Wardrobe::` | `app/Services/WardrobeService.php` |
+| `AudioService` | — (injected) | `app/Services/AudioService.php` |
+| `ImageGeneratorManager` | — (injected) | `app/Services/ImageGeneratorManager.php` |
 
 ---
 
-## Services
+## 1. BrainService — AI Orchestration
 
-### 1. GeminiBrainService
+**Facade:** `Brain::`
+**File:** `app/Services/BrainService.php`
 
-**Location:** `app/Services/GeminiBrainService.php`
+The central AI service. Wraps all agent calls through the **Laravel AI SDK** (`laravel/ai`). No direct dependency on any specific AI provider — the provider and model are fully configurable per-agent via `config/ai.php`.
 
-Handles all communication with the Google Gemini 1.5 Pro API.
+### Constructor
 
-#### Methods
-
-##### `generateChatResponse(Collection $chatHistory, Collection $memoryTags, string $systemPrompt): string`
-
-Generates a conversational response based on chat history and stored memory tags.
-
-**Parameters:**
-- `$chatHistory` - Collection of Message models with `sender_type` and `content`
-- `$memoryTags` - Collection of MemoryTag models with `target`, `key`, `value`
-- `$systemPrompt` - The persona's system prompt
-
-**Returns:** The AI's text response
-
-**Example Usage:**
 ```php
-use App\Services\GeminiBrainService;
+public function __construct(private readonly ImageGeneratorManager $imageGeneratorManager)
+```
 
-$brainService = app(GeminiBrainService::class);
+### Public Methods
 
-$response = $brainService->generateChatResponse(
-    chatHistory: Message::where('user_id', $user->id)->latest()->take(20)->get(),
-    memoryTags: MemoryTag::where('persona_id', $persona->id)->get(),
-    systemPrompt: $persona->system_prompt
+#### `generateChatResponse(Collection $chatHistory, Collection $memoryTags, string $systemPrompt, Persona $persona): string`
+
+Generates a live conversational response via `PersonaAgent`. Builds full context (memory, wardrobe, mood) and passes it through the agent's instructions.
+
+- Chat history is given as prior messages
+- Latest user message is extracted and used as the prompt
+- Response is passed through `processMediaTags()` to handle `[GENERATE_IMAGE:]` and `[SEND_VOICE:]` tags
+
+```php
+$response = Brain::generateChatResponse(
+    $chatHistory,      // Collection of Message models
+    $persona->memoryTags,
+    $persona->system_prompt,
+    $persona
 );
 ```
 
 ---
 
-##### `generateDailyPlan(Collection $memoryTags, string $systemPrompt, string $wakeTime, string $sleepTime): array`
+#### `generateTestResponse(Persona $persona, string $userMessage, array $chatHistory = []): string`
 
-Generates a daily event plan with 5 events spread throughout the day.
+Lightweight version for the admin TestChat panel. Does not save to the database. Accepts raw array history instead of Message models.
 
-**Parameters:**
-- `$memoryTags` - Collection of MemoryTag models
-- `$systemPrompt` - The persona's system prompt
-- `$wakeTime` - Format: "08:00"
-- `$sleepTime` - Format: "23:00"
-
-**Returns:** Array of events with structure:
 ```php
-[
-    [
-        'type' => 'text|image',
-        'content' => 'Message or image prompt',
-        'scheduled_at' => '2025-11-24 08:00:00'
-    ]
-]
-```
-
-**Example Usage:**
-```php
-$events = $brainService->generateDailyPlan(
-    memoryTags: $persona->memoryTags,
-    systemPrompt: $persona->system_prompt,
-    wakeTime: $persona->wake_time,
-    sleepTime: $persona->sleep_time
-);
-
-// Save to database
-foreach ($events as $eventData) {
-    EventSchedule::create([
-        'persona_id' => $persona->id,
-        'type' => $eventData['type'],
-        'content' => $eventData['content'],
-        'scheduled_at' => $eventData['scheduled_at'],
-        'status' => 'pending',
-    ]);
-}
+$response = Brain::generateTestResponse($persona, 'Hello!', $chatHistory);
 ```
 
 ---
 
-##### `extractMemoryTags(Collection $chatHistory, string $systemPrompt): array`
+#### `generate(string $prompt): string`
 
-Analyzes conversation history and extracts new facts about the user or persona.
+General-purpose single-prompt generation via an anonymous utility agent. Used for optimization prompts (e.g. persona prompt rewriting in `PersonaManager`).
 
-**Parameters:**
-- `$chatHistory` - Collection of recent messages
-- `$systemPrompt` - The persona's system prompt
-
-**Returns:** Array of memory tags:
 ```php
-[
-    [
-        'target' => 'user|self',
-        'key' => 'fact_name',
-        'value' => 'fact_value'
-    ]
-]
-```
-
-**Example Usage:**
-```php
-// Trigger after every 10 messages
-if ($messageCount % 10 === 0) {
-    $memoryTags = $brainService->extractMemoryTags(
-        chatHistory: $recentMessages,
-        systemPrompt: $persona->system_prompt
-    );
-    
-    foreach ($memoryTags as $tagData) {
-        MemoryTag::create([
-            'persona_id' => $persona->id,
-            'target' => $tagData['target'],
-            'key' => $tagData['key'],
-            'value' => $tagData['value'],
-        ]);
-    }
-}
+$optimized = Brain::generate($rawPrompt);
 ```
 
 ---
 
-### 2. TelegramService
+#### `generateEventResponse(EventSchedule $event, Persona $persona): string`
 
-**Location:** `app/Services/TelegramService.php`
+Generates a just-in-time message for a scheduled event. Treats `event->context_prompt` as an instruction (e.g. "Send morning greeting"), not final text. The AI interprets and writes the actual message.
 
-Manages all interactions with the Telegram Bot API.
+- Includes recent conversation history, memory context, and mood
+- Response may contain `<SPLIT>` markers for multi-message sends
+- Response always ends with `[MOOD: value]` for tracking
 
-#### Methods
-
-##### `sendMessage(string|int $chatId, string $message, array $options = []): bool`
-
-Sends a text message to a Telegram chat.
-
-**Parameters:**
-- `$chatId` - Telegram chat ID
-- `$message` - Text message (supports HTML)
-- `$options` - Additional Telegram API options
-
-**Example Usage:**
 ```php
-use App\Services\TelegramService;
-
-$telegram = app(TelegramService::class);
-
-$telegram->sendMessage(
-    chatId: $user->telegram_chat_id,
-    message: '<b>Hello!</b> How are you today?'
-);
+$reply = Brain::generateEventResponse($event, $persona);
 ```
 
 ---
 
-##### `sendStreamingMessage(string|int $chatId, string $message): bool`
+#### `generateDailyPlan(Collection $memoryTags, string $systemPrompt, string $wakeTime, string $sleepTime): array`
 
-Sends a message with a typing indicator to simulate natural conversation.
-
-**Example Usage:**
-```php
-$telegram->sendStreamingMessage(
-    chatId: $user->telegram_chat_id,
-    message: $aiResponse
-);
-```
-
----
-
-##### `sendPhoto(string|int $chatId, string $photo, ?string $caption = null, array $options = []): bool`
-
-Sends a photo to a Telegram chat.
-
-**Parameters:**
-- `$chatId` - Telegram chat ID
-- `$photo` - Photo URL or file_id
-- `$caption` - Optional caption (supports HTML)
-
-**Example Usage:**
-```php
-$telegram->sendPhoto(
-    chatId: $user->telegram_chat_id,
-    photo: 'https://example.com/image.jpg',
-    caption: 'Check out this view! 🌅'
-);
-```
-
----
-
-##### `parseUpdate(array $update): array`
-
-Parses incoming webhook data from Telegram.
+Generates a daily schedule as a JSON array of event instructions via `DailyPlanAgent`. Returns a plain array of events (no outfit data — outfit is now owned by `WardrobeService`).
 
 **Returns:**
 ```php
 [
-    'chat_id' => 123456789,
-    'message_id' => 1,
-    'text' => 'Hello bot!',
-    'user' => [
-        'id' => 123456789,
-        'first_name' => 'John',
-        'username' => 'johndoe'
-    ],
-    'date' => 1700000000
+    ['type' => 'text', 'content' => 'Send morning greeting. Ask how they slept.', 'scheduled_at' => '2026-04-12 08:00:00'],
+    ['type' => 'image_generation', 'content' => 'Generate cozy café selfie.', 'scheduled_at' => '2026-04-12 14:00:00'],
 ]
 ```
 
-**Example Usage:**
 ```php
-public function webhook(Request $request)
-{
-    $telegram = app(TelegramService::class);
-    $data = $telegram->parseUpdate($request->all());
-    
-    // Process the message
-}
+$events = Brain::generateDailyPlan(
+    $persona->memoryTags,
+    $persona->system_prompt,
+    $persona->wake_time,   // '08:00'
+    $persona->sleep_time   // '23:00'
+);
 ```
 
 ---
 
-### 3. SmartQueueService
+#### `extractMemoryTags(Collection $chatHistory, Persona $persona): array`
 
-**Location:** `app/Services/SmartQueueService.php`
+Analyses recent conversation and returns a structured diff of memory tags to add, update, or remove via `MemoryExtractionAgent`.
 
-Implements the "Smart Queue" logic to prevent interrupting active conversations.
-
-#### Core Logic
-
-- If user has interacted within **15 minutes**, reschedule event for **+30 minutes**
-- Respects persona's wake/sleep times
-- Tracks and manages event statuses
-
-#### Methods
-
-##### `isUserActive(User $user): bool`
-
-Checks if a user is currently in an active conversation.
-
-**Example Usage:**
+**Returns:**
 ```php
-use App\Services\SmartQueueService;
-
-$smartQueue = app(SmartQueueService::class);
-
-if ($smartQueue->isUserActive($user)) {
-    // User is chatting, reschedule event
-}
+[
+    'add'    => [['target' => 'user', 'category' => 'music', 'value' => 'likes Linkin Park']],
+    'update' => [['id' => 42, 'value' => 'new value']],
+    'remove' => [['id' => 55]],
+]
 ```
 
 ---
 
-##### `shouldExecuteEvent(EventSchedule $event): bool`
+#### `generateImage(string $prompt, Persona $persona): ?string`
 
-Determines if an event should be executed or rescheduled based on user activity.
+Generates an image via `ImageGeneratorManager`. Automatically builds a full prompt with `physical_traits`, dynamic memory traits, and today's wardrobe outfit. Returns the public URL or `null` on failure.
 
-**Example Usage:**
 ```php
-$event = EventSchedule::find($eventId);
-
-if ($smartQueue->shouldExecuteEvent($event)) {
-    // Execute the event
-} else {
-    // Event will be automatically rescheduled
-}
+$url = Brain::generateImage('selfie at the beach', $persona);
 ```
 
 ---
 
-##### `processEvent(EventSchedule $event, callable $executeCallback): bool`
+#### `buildPersonaInstructions(Persona $persona): string`
 
-Processes an event with smart queue logic, executing or rescheduling as needed.
+Builds the full system instructions string used by `PersonaAgent`. Combines:
+- `system_prompt` from the persona
+- Memory context (user facts + self facts)
+- Current wardrobe outfit (from `WardrobeService`)
+- Media instructions (`[GENERATE_IMAGE:]`, `[SEND_VOICE:]` formatting)
+- Mood tracking rules
+- Time/date context
 
-**Parameters:**
-- `$event` - The EventSchedule model
-- `$executeCallback` - Function to execute if event should run
+Used internally by `PersonaAgent::instructions()`.
 
-**Returns:** `true` if executed, `false` if rescheduled
+---
 
-**Example Usage:**
+#### `processMediaTags(string $text, Persona $persona): string`
+
+Processes AI response text, replacing media tags with actual generated content:
+- `[GENERATE_IMAGE: description]` → calls image generator → replaces with `[IMAGE: url]`
+- `[SEND_VOICE: text]` → calls `AudioService` → replaces with `[AUDIO: url]`
+
 ```php
-$smartQueue->processEvent($event, function($event) use ($telegram, $user) {
-    if ($event->type === 'text') {
-        $telegram->sendMessage($user->telegram_chat_id, $event->content);
-    } elseif ($event->type === 'image') {
-        $telegram->sendPhoto($user->telegram_chat_id, $event->content);
-    }
+$processed = Brain::processMediaTags($rawAiResponse, $persona);
+```
+
+---
+
+#### `generateImageLoadingMessage(Persona $persona): ?string`
+
+Generates a short "loading" message the persona says while an image is being generated (e.g. "Give me a sec to get ready 📸"). Returns `null` if generation fails.
+
+---
+
+#### `setCurrentPersona(Persona $persona): void`
+
+Sets the persona context for use during image prompt building within the same request cycle.
+
+---
+
+### Configuration (per-agent)
+
+Agents read their provider/model from `config/ai.php`:
+
+```php
+// config/ai.php
+'agents' => [
+    'default_model' => env('AI_DEFAULT_MODEL', 'gemma-4-e2b-it-uncensored'),
+    'chat'    => ['provider' => env('AI_CHAT_PROVIDER'),    'model' => env('AI_CHAT_MODEL')],
+    'planner' => ['provider' => env('AI_PLANNER_PROVIDER'), 'model' => env('AI_PLANNER_MODEL')],
+    'memory'  => ['provider' => env('AI_MEMORY_PROVIDER'),  'model' => env('AI_MEMORY_MODEL')],
+    'event'   => ['provider' => env('AI_EVENT_PROVIDER'),   'model' => env('AI_EVENT_MODEL')],
+    'utility' => ['provider' => env('AI_UTILITY_PROVIDER'), 'model' => env('AI_UTILITY_MODEL')],
+]
+```
+
+---
+
+## 2. TelegramService — Messaging
+
+**Facade:** `Telegram::`
+**File:** `app/Services/TelegramService.php`
+
+Wraps the Telegram Bot API. Supports multi-bot via optional `$botToken` parameter on each method.
+
+### Key Methods
+
+| Method | Description |
+|---|---|
+| `sendMessage($chatId, $message, $botToken, $options)` | Send HTML text message |
+| `sendStreamingMessage($chatId, $message, $botToken)` | Send with typing indicator simulation |
+| `sendPhoto($chatId, $photo, $caption, $botToken, $options)` | Send image (URL or file_id) |
+| `sendVoice($chatId, $voice, $botToken, $options)` | Send audio file |
+| `sendChatAction($chatId, $action, $botToken)` | Show typing/uploading status |
+| `sendAndEditMessage($chatId, $initial, $final)` | Send loading message then edit to final |
+| `setWebhook($url)` | Register webhook URL |
+| `removeWebhook()` | Remove webhook |
+| `getMe()` | Get bot info |
+| `getWebhookInfo()` | Get current webhook status |
+| `getUpdates($params)` | Poll for updates (non-webhook mode) |
+| `parseUpdate($update)` | Parse incoming webhook payload |
+| `downloadFile($fileId)` | Download file from Telegram servers |
+| `getFile($params)` | Get file info by file_id |
+| `setToken($token)` | Switch active bot token at runtime |
+
+### Example
+
+```php
+Telegram::sendStreamingMessage($user->telegram_chat_id, $aiResponse);
+Telegram::sendPhoto($user->telegram_chat_id, $imageUrl, 'Look at this! 📸');
+```
+
+---
+
+## 3. SmartQueueService — Intelligent Scheduling
+
+**Facade:** `SmartQueue::`
+**File:** `app/Services/SmartQueueService.php`
+
+Prevents events from interrupting active conversations. If the user has interacted within the active window (default: 15 min), the event is rescheduled (default: +30 min). Thresholds are configurable via `config/services.php`.
+
+### Key Methods
+
+| Method | Description |
+|---|---|
+| `isUserActive(User $user): bool` | True if user interacted within active window |
+| `shouldExecuteEvent(EventSchedule $event): bool` | True if event should run now |
+| `processEvent($event, callable $callback): bool` | Run or reschedule, returns true if executed |
+| `rescheduleEvent($event, $delayMinutes): void` | Delay event, status → 'rescheduled' |
+| `getDueEvents()` | Pending events past their scheduled_at |
+| `getRescheduledDueEvents()` | Rescheduled events now due |
+| `updateUserInteraction(User $user): void` | Stamp last_interaction_at = now() |
+| `isWithinActiveHours($persona): bool` | Between persona wake_time and sleep_time |
+
+### Example
+
+```php
+SmartQueue::processEvent($event, function ($event) use ($persona) {
+    $reply = Brain::generateEventResponse($event, $persona);
+    Telegram::sendMessage($persona->user->telegram_chat_id, $reply);
+    $event->update(['status' => 'sent']);
 });
 ```
 
 ---
 
-##### `updateUserInteraction(User $user): void`
+## 4. WardrobeService — Outfit Management
 
-Updates the user's `last_interaction_at` timestamp to current time.
+**Facade:** `Wardrobe::`
+**File:** `app/Services/WardrobeService.php`
 
-**Example Usage:**
+Manages the persona's wardrobe and daily outfit selection. Outfits are stored as `WardrobeItem` models — no longer in `memory_tags`. The AI sees today's outfit via `buildMemoryContext()` in `BrainService`.
+
+### Slot Names
+
+| Time Context | Slot Name |
+|---|---|
+| `'daytime'` | `casual_daytime` |
+| `'nighttime'` | `casual_nighttime` |
+
+### Key Methods
+
+| Method | Description |
+|---|---|
+| `getTodaysOutfit(Persona $persona, string $timeContext): ?WardrobeItem` | Get (or select) today's outfit for a time slot |
+| `selectOutfitForDay(Persona $persona, string $slot, Carbon $date): WardrobeItem` | 70/30 rotation logic, never repeats yesterday |
+| `buildOutfitDescription(WardrobeItem $item, string $shotType): string` | Filter description for image prompt by shot type |
+| `setOutfit(int $personaId, string $slot, array $parts, bool $isPrimary): WardrobeItem` | Create or replace an outfit item |
+| `generateOutfits(Persona $persona, string $slot, ...): Collection` | AI-generate new outfit items via Gemini |
+| `generateSimilarOutfits(WardrobeItem $existing, int $count): Collection` | Generate variations of an existing outfit |
+| `getOutfitHistory(int $personaId, int $days): Collection` | Recent daily outfit selections |
+| `getCurrentTimeContext(): string` | Returns `'daytime'` or `'nighttime'` based on current hour |
+| `getDefaultTags(Persona $persona): array` | Infer style tags from persona's system_prompt |
+| `checkGenerationLimit(Persona $persona): bool` | True if under daily generation quota |
+
+### Rotation Logic
+
+- **70%** chance: use the primary outfit (`is_primary = true`)
+- **30%** chance: random from rotation pool
+- Never repeats the previous day's outfit
+- If no outfits exist → auto-generates a fallback via AI
+
+### Clearing Cache
+
+To force new outfit selection today, delete from `daily_outfit_selections`:
+
 ```php
-// In webhook controller when user sends a message
-$smartQueue->updateUserInteraction($user);
+DB::table('daily_outfit_selections')->delete();
 ```
 
 ---
 
-##### `isWithinActiveHours(Persona $persona): bool`
+## 5. AudioService — Voice Synthesis
 
-Checks if current time is within the persona's active hours (between wake_time and sleep_time).
+**File:** `app/Services/AudioService.php`
+**No facade** — injected or resolved via `app(AudioService::class)`.
 
-**Example Usage:**
+Calls ElevenLabs API to convert text to MP3 audio. Stores result via Spatie MediaLibrary attached to the Persona model (`voice_notes` collection), with fallback to `Storage`.
+
+### Method
+
 ```php
-if ($smartQueue->isWithinActiveHours($persona)) {
-    // Persona is "awake", can send messages
-}
+generateVoice(string $text, ?Persona $persona = null, ?string $voiceId = null): ?string
 ```
 
----
+Returns the public URL of the generated audio file, or `null` on failure.
 
-## Data Transfer Objects (DTOs)
-
-### EventDTO
-
-**Location:** `app/DataTransferObjects/EventDTO.php`
-
-Structured data container for events.
-
-**Usage:**
 ```php
-use App\DataTransferObjects\EventDTO;
-
-$event = EventDTO::fromArray([
-    'type' => 'text',
-    'content' => 'Hello!',
-    'scheduled_at' => '2025-11-24 08:00:00'
-]);
-
-if ($event->isValid()) {
-    // Use the event
-}
+$audioUrl = app(AudioService::class)->generateVoice('Hey sayang!', $persona);
 ```
 
-### MemoryTagDTO
-
-**Location:** `app/DataTransferObjects/MemoryTagDTO.php`
-
-Structured data container for memory tags.
-
-**Usage:**
-```php
-use App\DataTransferObjects\MemoryTagDTO;
-
-$tag = MemoryTagDTO::fromArray([
-    'target' => 'user',
-    'key' => 'favorite_food',
-    'value' => 'pizza'
-]);
-
-if ($tag->isValid()) {
-    // Save to database
-}
-```
-
----
-
-## Configuration
-
-### Environment Variables
-
-Add these to your `.env` file:
-
+**Config:**
 ```env
-GEMINI_API_KEY=your_gemini_api_key_here
-TELEGRAM_BOT_TOKEN=your_bot_token_here
-TELEGRAM_WEBHOOK_URL=https://yourdomain.com/api/telegram/webhook
+ELEVENLABS_API_KEY=
+ELEVENLABS_VOICE_ID=
 ```
-
-### Config Files
-
-The services use these configuration files:
-- `config/services.php` - API credentials
-- `config/telegram.php` - Telegram bot settings
 
 ---
 
-## Integration Example
+## 6. ImageGeneratorManager — Multi-Driver Image Generation
 
-### Complete Chat Flow
+**File:** `app/Services/ImageGeneratorManager.php`
+**No facade** — injected into `BrainService` constructor.
+
+Selects and returns the correct image generator driver based on `config/services.php`.
+
+### Drivers
+
+| Driver Key | Class | Model | Notes |
+|---|---|---|---|
+| `cloudflare` (default) | `CloudflareFluxDriver` | `@cf/black-forest-labs/flux-1-schnell` | 4-step generation, NSFW fallback |
+| `kie_ai_text_to_image` | `KieAiTextToImageDriver` | `bytedance/seedream-v4-text-to-image` | Async polling, 2 min timeout |
+| `kie_ai_edit` | `KieAiEditDriver` | `bytedance/seedream-v4-edit` | Uses persona reference images |
+
+### Usage
 
 ```php
-use App\Services\{GeminiBrainService, TelegramService, SmartQueueService};
-use App\Models\{User, Persona, Message};
+$driver = app(ImageGeneratorManager::class)->driver(); // uses default
+$driver = app(ImageGeneratorManager::class)->driver('kie_ai_text_to_image');
+$imageUrl = $driver->generate($prompt, $persona);
+```
 
-// 1. Receive webhook
-$telegram = app(TelegramService::class);
-$smartQueue = app(SmartQueueService::class);
-$brain = app(GeminiBrainService::class);
-
-$data = $telegram->parseUpdate($request->all());
-
-// 2. Update user interaction
-$user = User::where('telegram_chat_id', $data['chat_id'])->first();
-$smartQueue->updateUserInteraction($user);
-
-// 3. Save incoming message
-Message::create([
-    'user_id' => $user->id,
-    'sender_type' => 'user',
-    'content' => $data['text'],
-]);
-
-// 4. Generate AI response
-$persona = $user->persona;
-$chatHistory = Message::where('user_id', $user->id)->latest()->take(20)->get();
-$memoryTags = $persona->memoryTags;
-
-$response = $brain->generateChatResponse(
-    chatHistory: $chatHistory,
-    memoryTags: $memoryTags,
-    systemPrompt: $persona->system_prompt
-);
-
-// 5. Send response
-$telegram->sendStreamingMessage($user->telegram_chat_id, $response);
-
-// 6. Save bot message
-Message::create([
-    'user_id' => $user->id,
-    'sender_type' => 'bot',
-    'content' => $response,
-]);
+**Config:**
+```env
+IMAGE_GENERATOR_DRIVER=cloudflare   # or kie_ai_text_to_image, kie_ai_edit
+CLOUDFLARE_ACCOUNT_ID=
+CLOUDFLARE_API_TOKEN=
+KIE_AI_API_KEY=
 ```
 
 ---
 
-## Next Steps
+## Complete Chat Flow
 
-1. Create webhook controller for handling Telegram updates
-2. Create scheduled command for daily plan generation
-3. Create job for processing chat responses (queue)
-4. Create job for memory extraction (background)
-5. Create event scheduler command to execute pending events
+```
+Telegram Webhook
+    ↓
+SmartQueue::updateUserInteraction($user)
+    ↓
+ProcessChatResponse (queued Job)
+    ↓
+Brain::generateChatResponse($history, $memoryTags, $systemPrompt, $persona)
+    ↓ (internally)
+    PersonaAgent → buildPersonaInstructions()
+        → buildMemoryContext()        [memory tags + wardrobe outfit]
+        → buildMediaInstructions()    [[GENERATE_IMAGE:] / [SEND_VOICE:] rules]
+        ↓
+    AI response (may contain media tags + <SPLIT> + [MOOD:])
+    ↓
+processMediaTags()
+    → [GENERATE_IMAGE: ...] → ImageGeneratorManager → MediaLibrary → [IMAGE: url]
+    → [SEND_VOICE: ...]     → AudioService          → MediaLibrary → [AUDIO: url]
+    ↓
+Telegram::sendMessage / sendPhoto / sendVoice
+    ↓
+ExtractMemoryTags (background Job, every N messages)
+    ↓
+Brain::extractMemoryTags() → MemoryTag upsert/delete
+```ayer Documentation
+
+> Last updated: April 2026. Reflects migration from google-gemini-php SDK to Laravel AI SDK.
+
+## Overview
+
+Business logic lives in **services**, not controllers. All services are singletons registered in `AppServiceProvider` and accessed via facades or dependency injection.
+
+| Service | Facade | File |
+|---|---|---|
+| `BrainService` | `Brain::` | `app/Services/BrainService.php` |
+| `TelegramService` | `Telegram::` | `app/Services/TelegramService.php` |
+| `SmartQueueService` | `SmartQueue::` | `app/Services/SmartQueueService.php` |
+| `WardrobeService` | `Wardrobe::` | `app/Services/WardrobeService.php` |
+| `AudioService` | — (injected) | `app/Services/AudioService.php` |
+| `ImageGeneratorManager` | — (injected) | `app/Services/ImageGeneratorManager.php` |
 
 ---
 
-## Error Handling
+## 1. BrainService — AI Orchestration
 
-All services include comprehensive error logging:
-- Failed API calls are logged with context
-- Fallback responses are provided for Gemini failures
-- Telegram send failures are tracked
+**Facade:** `Brain::`
+**File:** `app/Services/BrainService.php`
 
-Check logs in `storage/logs/laravel.log` for debugging.
+The central AI service. Wraps all agent calls through the **Laravel AI SDK** (`laravel/ai`). No direct dependency on any specific AI provider — the provider and model are fully configurable per-agent via `config/ai.php`.
+
+### Constructor
+
+```php
+public function __construct(private readonly ImageGeneratorManager $imageGeneratorManager)
+```
+
+### Public Methods
+
+#### `generateChatResponse(Collection $chatHistory, Collection $memoryTags, string $systemPrompt, Persona $persona): string`
+
+Generates a live conversational response via `PersonaAgent`. Builds full context (memory, wardrobe, mood) and passes it through the agent's instructions.
+
+- Chat history is given as prior messages
+- Latest user message is extracted and used as the prompt
+- Response is passed through `processMediaTags()` to handle `[GENERATE_IMAGE:]` and `[SEND_VOICE:]` tags
+
+```php
+$response = Brain::generateChatResponse(
+    $chatHistory,      // Collection of Message models
+    $persona->memoryTags,
+    $persona->system_prompt,
+    $persona
+);
+```
+
+---
+
+#### `generateTestResponse(Persona $persona, string $userMessage, array $chatHistory = []): string`
+
+Lightweight version for the admin TestChat panel. Does not save to the database. Accepts raw array history instead of Message models.
+
+```php
+$response = Brain::generateTestResponse($persona, 'Hello!', $chatHistory);
+```
+
+---
+
+#### `generate(string $prompt): string`
+
+General-purpose single-prompt generation via an anonymous utility agent. Used for optimization prompts (e.g. persona prompt rewriting in `PersonaManager`).
+
+```php
+$optimized = Brain::generate($rawPrompt);
+```
+
+---
+
+#### `generateEventResponse(EventSchedule $event, Persona $persona): string`
+
+Generates a just-in-time message for a scheduled event. Treats `event->context_prompt` as an instruction (e.g. "Send morning greeting"), not final text. The AI interprets and writes the actual message.
+
+- Includes recent conversation history, memory context, and mood
+- Response may contain `<SPLIT>` markers for multi-message sends
+- Response always ends with `[MOOD: value]` for tracking
+
+```php
+$reply = Brain::generateEventResponse($event, $persona);
+```
+
+---
+
+#### `generateDailyPlan(Collection $memoryTags, string $systemPrompt, string $wakeTime, string $sleepTime): array`
+
+Generates a daily schedule as a JSON array of event instructions via `DailyPlanAgent`. Returns a plain array of events (no outfit data — outfit is now owned by `WardrobeService`).
+
+**Returns:**
+```php
+[
+    ['type' => 'text', 'content' => 'Send morning greeting. Ask how they slept.', 'scheduled_at' => '2026-04-12 08:00:00'],
+    ['type' => 'image_generation', 'content' => 'Generate cozy café selfie.', 'scheduled_at' => '2026-04-12 14:00:00'],
+]
+```
+
+```php
+$events = Brain::generateDailyPlan(
+    $persona->memoryTags,
+    $persona->system_prompt,
+    $persona->wake_time,   // '08:00'
+    $persona->sleep_time   // '23:00'
+);
+```
+
+---
+
+#### `extractMemoryTags(Collection $chatHistory, Persona $persona): array`
+
+Analyses recent conversation and returns a structured diff of memory tags to add, update, or remove via `MemoryExtractionAgent`.
+
+**Returns:**
+```php
+[
+    'add'    => [['target' => 'user', 'category' => 'music', 'value' => 'likes Linkin Park']],
+    'update' => [['id' => 42, 'value' => 'new value']],
+    'remove' => [['id' => 55]],
+]
+```
+
+---
+
+#### `generateImage(string $prompt, Persona $persona): ?string`
+
+Generates an image via `ImageGeneratorManager`. Automatically builds a full prompt with `physical_traits`, dynamic memory traits, and today's wardrobe outfit. Returns the public URL or `null` on failure.
+
+```php
+$url = Brain::generateImage('selfie at the beach', $persona);
+```
+
+---
+
+#### `buildPersonaInstructions(Persona $persona): string`
+
+Builds the full system instructions string used by `PersonaAgent`. Combines:
+- `system_prompt` from the persona
+- Memory context (user facts + self facts)
+- Current wardrobe outfit (from `WardrobeService`)
+- Media instructions (`[GENERATE_IMAGE:]`, `[SEND_VOICE:]` formatting)
+- Mood tracking rules
+- Time/date context
+
+Used internally by `PersonaAgent::instructions()`.
+
+---
+
+#### `processMediaTags(string $text, Persona $persona): string`
+
+Processes AI response text, replacing media tags with actual generated content:
+- `[GENERATE_IMAGE: description]` → calls image generator → replaces with `[IMAGE: url]`
+- `[SEND_VOICE: text]` → calls `AudioService` → replaces with `[AUDIO: url]`
+
+```php
+$processed = Brain::processMediaTags($rawAiResponse, $persona);
+```
+
+---
+
+#### `generateImageLoadingMessage(Persona $persona): ?string`
+
+Generates a short "loading" message the persona says while an image is being generated (e.g. "Give me a sec to get ready 📸"). Returns `null` if generation fails.
+
+---
+
+#### `setCurrentPersona(Persona $persona): void`
+
+Sets the persona context for use during image prompt building within the same request cycle.
+
+---
+
+### Configuration (per-agent)
+
+Agents read their provider/model from `config/ai.php`:
+
+```php
+// config/ai.php
+'agents' => [
+    'default_model' => env('AI_DEFAULT_MODEL', 'gemma-4-e2b-it-uncensored'),
+    'chat'    => ['provider' => env('AI_CHAT_PROVIDER'),    'model' => env('AI_CHAT_MODEL')],
+    'planner' => ['provider' => env('AI_PLANNER_PROVIDER'), 'model' => env('AI_PLANNER_MODEL')],
+    'memory'  => ['provider' => env('AI_MEMORY_PROVIDER'),  'model' => env('AI_MEMORY_MODEL')],
+    'event'   => ['provider' => env('AI_EVENT_PROVIDER'),   'model' => env('AI_EVENT_MODEL')],
+    'utility' => ['provider' => env('AI_UTILITY_PROVIDER'), 'model' => env('AI_UTILITY_MODEL')],
+]
+```
+
+---
+
+## 2. TelegramService — Messaging
+
+**Facade:** `Telegram::`
+**File:** `app/Services/TelegramService.php`
+
+Wraps the Telegram Bot API. Supports multi-bot via optional `$botToken` parameter on each method.
+
+### Key Methods
+
+| Method | Description |
+|---|---|
+| `sendMessage($chatId, $message, $botToken, $options)` | Send HTML text message |
+| `sendStreamingMessage($chatId, $message, $botToken)` | Send with typing indicator simulation |
+| `sendPhoto($chatId, $photo, $caption, $botToken, $options)` | Send image (URL or file_id) |
+| `sendVoice($chatId, $voice, $botToken, $options)` | Send audio file |
+| `sendChatAction($chatId, $action, $botToken)` | Show typing/uploading status |
+| `sendAndEditMessage($chatId, $initial, $final)` | Send loading message then edit to final |
+| `setWebhook($url)` | Register webhook URL |
+| `removeWebhook()` | Remove webhook |
+| `getMe()` | Get bot info |
+| `getWebhookInfo()` | Get current webhook status |
+| `getUpdates($params)` | Poll for updates (non-webhook mode) |
+| `parseUpdate($update)` | Parse incoming webhook payload |
+| `downloadFile($fileId)` | Download file from Telegram servers |
+| `getFile($params)` | Get file info by file_id |
+| `setToken($token)` | Switch active bot token at runtime |
+
+### Example
+
+```php
+Telegram::sendStreamingMessage($user->telegram_chat_id, $aiResponse);
+Telegram::sendPhoto($user->telegram_chat_id, $imageUrl, 'Look at this! 📸');
+```
+
+---
+
+## 3. SmartQueueService — Intelligent Scheduling
+
+**Facade:** `SmartQueue::`
+**File:** `app/Services/SmartQueueService.php`
+
+Prevents events from interrupting active conversations. If the user has interacted within the active window (default: 15 min), the event is rescheduled (default: +30 min). Thresholds are configurable via `config/services.php`.
+
+### Key Methods
+
+| Method | Description |
+|---|---|
+| `isUserActive(User $user): bool` | True if user interacted within active window |
+| `shouldExecuteEvent(EventSchedule $event): bool` | True if event should run now |
+| `processEvent($event, callable $callback): bool` | Run or reschedule, returns true if executed |
+| `rescheduleEvent($event, $delayMinutes): void` | Delay event, status → 'rescheduled' |
+| `getDueEvents()` | Pending events past their scheduled_at |
+| `getRescheduledDueEvents()` | Rescheduled events now due |
+| `updateUserInteraction(User $user): void` | Stamp last_interaction_at = now() |
+| `isWithinActiveHours($persona): bool` | Between persona wake_time and sleep_time |
+
+### Example
+
+```php
+SmartQueue::processEvent($event, function ($event) use ($persona) {
+    $reply = Brain::generateEventResponse($event, $persona);
+    Telegram::sendMessage($persona->user->telegram_chat_id, $reply);
+    $event->update(['status' => 'sent']);
+});
+```
+
+---
+
+## 4. WardrobeService — Outfit Management
+
+**Facade:** `Wardrobe::`
+**File:** `app/Services/WardrobeService.php`
+
+Manages the persona's wardrobe and daily outfit selection. Outfits are stored as `WardrobeItem` models — no longer in `memory_tags`. The AI sees today's outfit via `buildMemoryContext()` in `BrainService`.
+
+### Slot Names
+
+| Time Context | Slot Name |
+|---|---|
+| `'daytime'` | `casual_daytime` |
+| `'nighttime'` | `casual_nighttime` |
+
+### Key Methods
+
+| Method | Description |
+|---|---|
+| `getTodaysOutfit(Persona $persona, string $timeContext): ?WardrobeItem` | Get (or select) today's outfit for a time slot |
+| `selectOutfitForDay(Persona $persona, string $slot, Carbon $date): WardrobeItem` | 70/30 rotation logic, never repeats yesterday |
+| `buildOutfitDescription(WardrobeItem $item, string $shotType): string` | Filter description for image prompt by shot type |
+| `setOutfit(int $personaId, string $slot, array $parts, bool $isPrimary): WardrobeItem` | Create or replace an outfit item |
+| `generateOutfits(Persona $persona, string $slot, ...): Collection` | AI-generate new outfit items via Gemini |
+| `generateSimilarOutfits(WardrobeItem $existing, int $count): Collection` | Generate variations of an existing outfit |
+| `getOutfitHistory(int $personaId, int $days): Collection` | Recent daily outfit selections |
+| `getCurrentTimeContext(): string` | Returns `'daytime'` or `'nighttime'` based on current hour |
+| `getDefaultTags(Persona $persona): array` | Infer style tags from persona's system_prompt |
+| `checkGenerationLimit(Persona $persona): bool` | True if under daily generation quota |
+
+### Rotation Logic
+
+- **70%** chance: use the primary outfit (`is_primary = true`)
+- **30%** chance: random from rotation pool
+- Never repeats the previous day's outfit
+- If no outfits exist → auto-generates a fallback via AI
+
+### Clearing Cache
+
+To force new outfit selection today, delete from `daily_outfit_selections`:
+
+```php
+DB::table('daily_outfit_selections')->delete();
+```
+
+---
+
+## 5. AudioService — Voice Synthesis
+
+**File:** `app/Services/AudioService.php`
+**No facade** — injected or resolved via `app(AudioService::class)`.
+
+Calls ElevenLabs API to convert text to MP3 audio. Stores result via Spatie MediaLibrary attached to the Persona model (`voice_notes` collection), with fallback to `Storage`.
+
+### Method
+
+```php
+generateVoice(string $text, ?Persona $persona = null, ?string $voiceId = null): ?string
+```
+
+Returns the public URL of the generated audio file, or `null` on failure.
+
+```php
+$audioUrl = app(AudioService::class)->generateVoice('Hey sayang!', $persona);
+```
+
+**Config:**
+```env
+ELEVENLABS_API_KEY=
+ELEVENLABS_VOICE_ID=
+```
+
+---
+
+## 6. ImageGeneratorManager — Multi-Driver Image Generation
+
+**File:** `app/Services/ImageGeneratorManager.php`
+**No facade** — injected into `BrainService` constructor.
+
+Selects and returns the correct image generator driver based on `config/services.php`.
+
+### Drivers
+
+| Driver Key | Class | Model | Notes |
+|---|---|---|---|
+| `cloudflare` (default) | `CloudflareFluxDriver` | `@cf/black-forest-labs/flux-1-schnell` | 4-step generation, NSFW fallback |
+| `kie_ai_text_to_image` | `KieAiTextToImageDriver` | `bytedance/seedream-v4-text-to-image` | Async polling, 2 min timeout |
+| `kie_ai_edit` | `KieAiEditDriver` | `bytedance/seedream-v4-edit` | Uses persona reference images |
+
+### Usage
+
+```php
+$driver = app(ImageGeneratorManager::class)->driver(); // uses default
+$driver = app(ImageGeneratorManager::class)->driver('kie_ai_text_to_image');
+$imageUrl = $driver->generate($prompt, $persona);
+```
+
+**Config:**
+```env
+IMAGE_GENERATOR_DRIVER=cloudflare   # or kie_ai_text_to_image, kie_ai_edit
+CLOUDFLARE_ACCOUNT_ID=
+CLOUDFLARE_API_TOKEN=
+KIE_AI_API_KEY=
+```
+
+---
+
+## Complete Chat Flow
+
+```
+Telegram Webhook
+    ↓
+SmartQueue::updateUserInteraction($user)
+    ↓
+ProcessChatResponse (queued Job)
+    ↓
+Brain::generateChatResponse($history, $memoryTags, $systemPrompt, $persona)
+    ↓ (internally)
+    PersonaAgent → buildPersonaInstructions()
+        → buildMemoryContext()        [memory tags + wardrobe outfit]
+        → buildMediaInstructions()    [[GENERATE_IMAGE:] / [SEND_VOICE:] rules]
+        ↓
+    AI response (may contain media tags + <SPLIT> + [MOOD:])
+    ↓
+processMediaTags()
+    → [GENERATE_IMAGE: ...] → ImageGeneratorManager → MediaLibrary → [IMAGE: url]
+    → [SEND_VOICE: ...]     → AudioService          → MediaLibrary → [AUDIO: url]
+    ↓
+Telegram::sendMessage / sendPhoto / sendVoice
+    ↓
+ExtractMemoryTags (background Job, every N messages)
+    ↓
+Brain::extractMemoryTags() → MemoryTag upsert/delete
+```

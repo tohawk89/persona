@@ -2,17 +2,22 @@
 
 namespace App\Jobs;
 
+use App\Facades\Brain;
+use App\Facades\Telegram;
+use App\Models\MemoryTag;
+use App\Models\Message;
+use App\Models\Persona;
+use App\Models\User;
 use Illuminate\Bus\Queueable;
-use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
+use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
-use App\Models\{User, Message};
-use App\Facades\{GeminiBrain, Telegram};
 
-class ProcessChatResponse implements ShouldQueue, ShouldBeUnique
+class ProcessChatResponse implements ShouldBeUnique, ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
@@ -33,21 +38,22 @@ class ProcessChatResponse implements ShouldQueue, ShouldBeUnique
     public function uniqueId(): string
     {
         $personaId = $this->persona?->id ?? 'default';
+
         return "process_chat_{$this->user->id}_{$personaId}";
     }
 
     /**
      * Create a new job instance.
      *
-     * @param User $user The user to process chat for
-     * @param string|null $imagePath Optional image path (bypasses buffering)
-     * @param \App\Models\Persona|null $persona Specific persona for this chat
-     * @param string|null $botToken Optional custom bot token
+     * @param  User  $user  The user to process chat for
+     * @param  string|null  $imagePath  Optional image path (bypasses buffering)
+     * @param  Persona|null  $persona  Specific persona for this chat
+     * @param  string|null  $botToken  Optional custom bot token
      */
     public function __construct(
         public User $user,
         public ?string $imagePath = null,
-        public ?\App\Models\Persona $persona = null,
+        public ?Persona $persona = null,
         public ?string $botToken = null
     ) {}
 
@@ -60,10 +66,11 @@ class ProcessChatResponse implements ShouldQueue, ShouldBeUnique
             // Use provided persona or fall back to user's default persona
             $persona = $this->persona ?? $this->user->persona;
 
-            if (!$persona) {
+            if (! $persona) {
                 Log::warning('ProcessChatResponse: No persona available', [
                     'user_id' => $this->user->id,
                 ]);
+
                 return;
             }
 
@@ -72,15 +79,15 @@ class ProcessChatResponse implements ShouldQueue, ShouldBeUnique
                 Telegram::setToken($this->botToken);
                 Log::info('ProcessChatResponse: Using custom bot token', [
                     'persona_id' => $persona->id,
-                    'token_prefix' => substr($this->botToken, 0, 10) . '...',
+                    'token_prefix' => substr($this->botToken, 0, 10).'...',
                 ]);
             }
 
             // STEP 1: Atomic Lock (Prevent concurrent processing)
             $lockKey = "processing_chat_{$this->user->id}_{$persona->id}";
-            $lock = \Illuminate\Support\Facades\Cache::lock($lockKey, 10);
+            $lock = Cache::lock($lockKey, 10);
 
-            if (!$lock->get()) {
+            if (! $lock->get()) {
                 // Brain is busy - requeue job to retry in 5 seconds
                 // This ensures no messages are dropped during rapid-fire typing
                 Log::info('ProcessChatResponse: Brain busy, requeueing job', [
@@ -89,6 +96,7 @@ class ProcessChatResponse implements ShouldQueue, ShouldBeUnique
                     'retry_in' => '5 seconds',
                 ]);
                 $this->release(5);
+
                 return;
             }
 
@@ -102,13 +110,14 @@ class ProcessChatResponse implements ShouldQueue, ShouldBeUnique
                 } else {
                     // Text message: fetch from buffer
                     $bufferKey = "chat_buffer_{$this->user->telegram_chat_id}_{$persona->id}";
-                    $aggregatedText = \Illuminate\Support\Facades\Cache::pull($bufferKey);
+                    $aggregatedText = Cache::pull($bufferKey);
 
                     if (empty($aggregatedText)) {
                         Log::info('ProcessChatResponse: Buffer empty, already processed', [
                             'user_id' => $this->user->id,
                         ]);
                         $lock->release();
+
                         return;
                     }
 
@@ -150,7 +159,7 @@ class ProcessChatResponse implements ShouldQueue, ShouldBeUnique
                     $chatHistory->push($bufferMessage);
                 }
 
-                $response = GeminiBrain::generateChatResponse(
+                $response = Brain::generateChatResponse(
                     $chatHistory,
                     $memoryTags,
                     $persona->system_prompt,
@@ -177,7 +186,7 @@ class ProcessChatResponse implements ShouldQueue, ShouldBeUnique
                     $moodValue = trim($moodMatch[1]);
 
                     // Update or create current_mood memory tag
-                    \App\Models\MemoryTag::updateOrCreate(
+                    MemoryTag::updateOrCreate(
                         [
                             'persona_id' => $persona->id,
                             'category' => 'current_mood',
@@ -185,7 +194,7 @@ class ProcessChatResponse implements ShouldQueue, ShouldBeUnique
                         ],
                         [
                             'value' => $moodValue,
-                            'context' => 'Real-time update on ' . now()->format('Y-m-d H:i:s'),
+                            'context' => 'Real-time update on '.now()->format('Y-m-d H:i:s'),
                         ]
                     );
 
@@ -201,7 +210,7 @@ class ProcessChatResponse implements ShouldQueue, ShouldBeUnique
 
                 // STEP 4.7: Send loading feedback if image generation detected
                 if (preg_match('/\[GENERATE_IMAGE:\s*(.+?)\]/i', $response)) {
-                    $loadingMessage = GeminiBrain::generateImageLoadingMessage($persona);
+                    $loadingMessage = Brain::generateImageLoadingMessage($persona);
 
                     if ($loadingMessage) {
                         Telegram::sendChatAction($this->user->telegram_chat_id, 'typing', $this->botToken);
@@ -248,7 +257,7 @@ class ProcessChatResponse implements ShouldQueue, ShouldBeUnique
             // Send fallback message to user
             Telegram::sendMessage(
                 $this->user->telegram_chat_id,
-                "Adoi, ada masalah sikit... Cuba tanya sekali lagi? 💭"
+                'Adoi, ada masalah sikit... Cuba tanya sekali lagi? 💭'
             );
 
             throw $e; // Re-throw for retry logic
@@ -317,7 +326,7 @@ class ProcessChatResponse implements ShouldQueue, ShouldBeUnique
         }
 
         // CASE C: Standard Text (with natural pacing via <SPLIT> delimiter)
-        if (!$hasImage && !$hasAudio && $textPart) {
+        if (! $hasImage && ! $hasAudio && $textPart) {
             // Split text by <SPLIT> delimiter for natural message pacing
             $parts = explode('<SPLIT>', $textPart);
 
@@ -356,7 +365,7 @@ class ProcessChatResponse implements ShouldQueue, ShouldBeUnique
                     'delay' => $delay,
                 ]);
             }
-        } elseif (!$hasImage && $hasAudio && $textPart) {
+        } elseif (! $hasImage && $hasAudio && $textPart) {
             // If only audio (no image to use text as caption), split and send text separately
             $parts = explode('<SPLIT>', $textPart);
 

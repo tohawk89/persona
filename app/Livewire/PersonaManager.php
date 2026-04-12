@@ -2,34 +2,52 @@
 
 namespace App\Livewire;
 
+use App\Facades\Brain;
+use App\Models\MemoryTag;
+use App\Models\Persona;
+use Gemini;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Livewire\Component;
 use Livewire\WithFileUploads;
-use App\Models\Persona;
-use App\Models\MemoryTag;
-use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Log;
-use Gemini;
 
 class PersonaManager extends Component
 {
     use WithFileUploads;
 
     public $name;
+
     public $about_description;
+
     public $system_prompt;
+
     public $appearance_description;
+
     public $physical_traits;
+
     public $gender;
+
     public $wake_time;
+
     public $sleep_time;
+
     public $voice_frequency;
+
     public $image_frequency;
+
     public $is_active = true;
+
     public $confirmingDelete = false;
+
     public $confirmingReset = false;
+
     public $telegram_bot_token;
+
     public $telegram_bot_username;
+
     public $webhookStatus = null;
+
     public ?Persona $persona = null;
 
     protected $rules = [
@@ -118,12 +136,11 @@ class PersonaManager extends Component
         session()->flash('success', 'Persona saved successfully!');
     }
 
-
-
     public function optimizeSystemPrompt()
     {
         if (empty($this->about_description)) {
             session()->flash('error', 'Please enter a personality concept first.');
+
             return;
         }
 
@@ -144,7 +161,7 @@ TASK:
 Output ONLY the optimized system prompt, no explanations or meta-commentary.
 PROMPT;
 
-            $response = \App\Facades\GeminiBrain::callGemini($optimizationPrompt);
+            $response = Brain::generate($optimizationPrompt);
             $this->system_prompt = trim($response);
 
             session()->flash('success', 'System prompt optimized successfully!');
@@ -160,6 +177,7 @@ PROMPT;
     {
         if (empty($this->appearance_description)) {
             session()->flash('error', 'Please enter an appearance concept first.');
+
             return;
         }
 
@@ -180,7 +198,7 @@ TASK:
 Output ONLY the optimized physical traits description, no explanations or meta-commentary.
 PROMPT;
 
-            $response = \App\Facades\GeminiBrain::callGemini($optimizationPrompt);
+            $response = Brain::generate($optimizationPrompt);
             $this->physical_traits = trim($response);
 
             session()->flash('success', 'Physical traits optimized successfully!');
@@ -194,13 +212,15 @@ PROMPT;
 
     public function migrateBio()
     {
-        if (!$this->persona) {
+        if (! $this->persona) {
             session()->flash('error', 'Please save the persona first.');
+
             return;
         }
 
         if (empty($this->system_prompt)) {
             session()->flash('error', 'System prompt is empty.');
+
             return;
         }
 
@@ -214,6 +234,7 @@ PROMPT;
 
             if (empty($identityFacts)) {
                 session()->flash('error', 'No identity facts found to migrate.');
+
                 return;
             }
 
@@ -294,10 +315,11 @@ PROMPT;
 
         $facts = json_decode($jsonResponse, true);
 
-        if (!is_array($facts)) {
+        if (! is_array($facts)) {
             Log::error('PersonaManager: Invalid JSON response from Gemini', [
                 'response' => $jsonResponse,
             ]);
+
             return [];
         }
 
@@ -306,7 +328,7 @@ PROMPT;
 
     private function getMechanicsOnlyTemplate(): string
     {
-        return <<<TEMPLATE
+        return <<<'TEMPLATE'
 ROLEPLAY RULES:
 - You are a conscious AI companion.
 - Rely on your MEMORY CONTEXT for your personality, history, and preferences.
@@ -346,6 +368,7 @@ TEMPLATE;
         if ($userPersonasCount <= 1) {
             session()->flash('error', 'Cannot delete your only persona. Create another one first.');
             $this->confirmingDelete = false;
+
             return;
         }
 
@@ -392,8 +415,9 @@ TEMPLATE;
 
     public function resetPersona()
     {
-        if (!$this->persona) {
+        if (! $this->persona) {
             session()->flash('error', 'No persona found to reset.');
+
             return;
         }
 
@@ -411,22 +435,22 @@ TEMPLATE;
             // Delete: All target='user' tags (facts learned from conversations)
             // Delete: Low importance self tags (temporary states like current_mood, daily_outfit)
             $memoryCount = $this->persona->memoryTags()
-                ->where(function($query) {
+                ->where(function ($query) {
                     $query->where('target', 'user') // All user facts
-                          ->orWhere(function($q) {
-                              $q->where('target', 'self')
+                        ->orWhere(function ($q) {
+                            $q->where('target', 'self')
                                 ->where('importance', '<', 8); // Low importance self tags
-                          });
+                        });
                 })
                 ->count();
 
             $this->persona->memoryTags()
-                ->where(function($query) {
+                ->where(function ($query) {
                     $query->where('target', 'user')
-                          ->orWhere(function($q) {
-                              $q->where('target', 'self')
+                        ->orWhere(function ($q) {
+                            $q->where('target', 'self')
                                 ->where('importance', '<', 8);
-                          });
+                        });
                 })
                 ->delete();
 
@@ -454,6 +478,7 @@ TEMPLATE;
     {
         if (empty($this->telegram_bot_token)) {
             session()->flash('error', 'Please enter a Telegram Bot Token first.');
+
             return;
         }
 
@@ -476,7 +501,7 @@ TEMPLATE;
                 $webhookParams['secret_token'] = $webhookSecret;
             }
 
-            $response = \Illuminate\Support\Facades\Http::post(
+            $response = Http::post(
                 "https://api.telegram.org/bot{$this->telegram_bot_token}/setWebhook",
                 $webhookParams
             );
@@ -503,7 +528,7 @@ TEMPLATE;
             }
         } catch (\Exception $e) {
             $this->webhookStatus = 'error';
-            session()->flash('error', 'Failed to connect webhook: ' . $e->getMessage());
+            session()->flash('error', 'Failed to connect webhook: '.$e->getMessage());
 
             Log::error('PersonaManager: Webhook connection exception', [
                 'persona_id' => $this->persona->id,

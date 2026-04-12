@@ -10,7 +10,7 @@ use App\Mcp\Tools\ListPersonasTool;
 use App\Models\MemoryTag;
 use App\Models\Persona;
 use App\Models\User;
-use App\Services\GeminiBrainService;
+use App\Services\BrainService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
@@ -92,7 +92,7 @@ class McpServerTest extends TestCase
     {
         PersonaAgent::fake(['Hey there! How are you doing?']);
 
-        $this->mock(GeminiBrainService::class)
+        $this->mock(BrainService::class)
             ->shouldReceive('buildPersonaInstructions')->andReturn('You are a persona.')
             ->shouldReceive('processMediaTags')->andReturnArg(0);
 
@@ -124,7 +124,7 @@ class McpServerTest extends TestCase
     {
         PersonaAgent::fake(['Sure, tell me more!']);
 
-        $this->mock(GeminiBrainService::class)
+        $this->mock(BrainService::class)
             ->shouldReceive('buildPersonaInstructions')->andReturn('You are a persona.')
             ->shouldReceive('processMediaTags')->andReturnArg(0);
 

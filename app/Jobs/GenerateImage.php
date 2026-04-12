@@ -2,7 +2,7 @@
 
 namespace App\Jobs;
 
-use App\Facades\GeminiBrain;
+use App\Facades\Brain;
 use App\Facades\Telegram;
 use App\Models\Message;
 use App\Models\Persona;
@@ -18,6 +18,7 @@ class GenerateImage implements ShouldQueue
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public int $timeout = 180; // 3 minutes for image generation
+
     public int $tries = 2; // Retry once if it fails
 
     public function __construct(
@@ -32,11 +33,12 @@ class GenerateImage implements ShouldQueue
         $message = Message::find($this->messageId);
         $persona = Persona::find($this->personaId);
 
-        if (!$message || !$persona) {
+        if (! $message || ! $persona) {
             Log::error('GenerateImage: Message or persona not found', [
                 'message_id' => $this->messageId,
                 'persona_id' => $this->personaId,
             ]);
+
             return;
         }
 
@@ -54,7 +56,7 @@ class GenerateImage implements ShouldQueue
 
         try {
             // Generate image
-            $imageUrl = GeminiBrain::generateImage($this->description, $persona);
+            $imageUrl = Brain::generateImage($this->description, $persona);
 
             if (empty($imageUrl)) {
                 Log::error('GenerateImage: Failed to generate image', [
@@ -64,11 +66,12 @@ class GenerateImage implements ShouldQueue
 
                 // Update message with failure notice
                 $message->update([
-                    'content' => $message->content . "\n\n[Image generation failed]",
+                    'content' => $message->content."\n\n[Image generation failed]",
                 ]);
 
                 // Notify user
-                Telegram::sendMessage($this->chatId, "Adoi, failed to generate image. Please try again later 🥺");
+                Telegram::sendMessage($this->chatId, 'Adoi, failed to generate image. Please try again later 🥺');
+
                 return;
             }
 
@@ -100,7 +103,7 @@ class GenerateImage implements ShouldQueue
 
             // Update message with failure notice
             $message->update([
-                'content' => $message->content . "\n\n[Image generation error: {$e->getMessage()}]",
+                'content' => $message->content."\n\n[Image generation error: {$e->getMessage()}]",
             ]);
 
             throw $e; // Re-throw to trigger retry

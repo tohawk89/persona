@@ -2,17 +2,20 @@
 
 namespace App\Livewire;
 
-use Livewire\Component;
 use App\Models\Persona;
-use App\Services\GeminiBrainService;
-use Illuminate\Support\Facades\Auth;
+use App\Services\BrainService;
+use Livewire\Component;
 
 class TestChat extends Component
 {
     public $chatHistory = [];
+
     public $inputMessage = '';
+
     public $persona;
+
     public $loading = false;
+
     public $contextImported = false;
 
     protected $rules = [
@@ -38,7 +41,7 @@ class TestChat extends Component
             // Add context info message
             $this->chatHistory[] = [
                 'role' => 'system',
-                'content' => "🧪 Testing Scheduled Event\nType: " . ($eventType === 'image_generation' ? '🖼️ Image Generation' : '💬 Text Message') . "\nScheduled: {$eventTime}\n\n⚡ Simulating event trigger...",
+                'content' => "🧪 Testing Scheduled Event\nType: ".($eventType === 'image_generation' ? '🖼️ Image Generation' : '💬 Text Message')."\nScheduled: {$eventTime}\n\n⚡ Simulating event trigger...",
                 'timestamp' => now()->format('H:i'),
             ];
 
@@ -46,7 +49,7 @@ class TestChat extends Component
 
             try {
                 // Generate response using the event prompt as context
-                $service = app(GeminiBrainService::class);
+                $service = app(BrainService::class);
 
                 // Build the simulated response based on event type
                 if ($eventType === 'image_generation') {
@@ -56,7 +59,7 @@ class TestChat extends Component
                     if ($imageUrl) {
                         $simulatedMessage = "Here's something for you! [IMAGE: {$imageUrl}]";
                     } else {
-                        $simulatedMessage = "I tried to share an image with you, but something went wrong 😔";
+                        $simulatedMessage = 'I tried to share an image with you, but something went wrong 😔';
                     }
                 } else {
                     // For text, use Gemini to generate natural response based on the prompt
@@ -76,7 +79,7 @@ class TestChat extends Component
             } catch (\Exception $e) {
                 $this->chatHistory[] = [
                     'role' => 'system',
-                    'content' => "❌ Error triggering event: " . $e->getMessage(),
+                    'content' => '❌ Error triggering event: '.$e->getMessage(),
                     'timestamp' => now()->format('H:i'),
                 ];
             }
@@ -110,8 +113,8 @@ class TestChat extends Component
         $this->loading = true;
 
         try {
-            // Generate response using GeminiBrainService
-            $service = app(GeminiBrainService::class);
+            // Generate response using BrainService
+            $service = app(BrainService::class);
             $response = $service->generateTestResponse(
                 $this->persona,
                 $userMessage,
@@ -127,7 +130,7 @@ class TestChat extends Component
         } catch (\Exception $e) {
             $this->chatHistory[] = [
                 'role' => 'bot',
-                'content' => 'Error: ' . $e->getMessage(),
+                'content' => 'Error: '.$e->getMessage(),
                 'timestamp' => now()->format('H:i'),
             ];
         }

@@ -2,11 +2,10 @@
 
 namespace App\Console\Commands;
 
-use Illuminate\Console\Command;
-use App\Models\Persona;
-use App\Facades\GeminiBrain;
+use App\Facades\Brain;
 use App\Facades\Telegram;
-use Illuminate\Support\Facades\Log;
+use App\Models\Persona;
+use Illuminate\Console\Command;
 
 class TestImageGeneration extends Command
 {
@@ -35,15 +34,17 @@ class TestImageGeneration extends Command
         // Get the first persona
         $persona = Persona::with('user')->first();
 
-        if (!$persona) {
+        if (! $persona) {
             $this->error('❌ No persona found in database');
+
             return self::FAILURE;
         }
 
         $this->info("✓ Found persona: {$persona->name} (ID: {$persona->id})");
 
-        if (!$persona->user || !$persona->user->telegram_chat_id) {
+        if (! $persona->user || ! $persona->user->telegram_chat_id) {
             $this->error('❌ Persona has no user or telegram_chat_id configured');
+
             return self::FAILURE;
         }
 
@@ -58,7 +59,7 @@ class TestImageGeneration extends Command
             $prompt = $customPrompt;
             $this->info("📝 Using custom prompt: {$prompt}");
         } else {
-            $prompt = "A young woman taking a cheerful selfie, smiling at the camera in a bright, modern room with natural lighting";
+            $prompt = 'A young woman taking a cheerful selfie, smiling at the camera in a bright, modern room with natural lighting';
             $this->info("📝 Using default prompt: {$prompt}");
         }
 
@@ -67,12 +68,13 @@ class TestImageGeneration extends Command
 
         // Generate image
         $startTime = microtime(true);
-        $imageUrl = GeminiBrain::generateImage($prompt, $persona);
+        $imageUrl = Brain::generateImage($prompt, $persona);
         $duration = round(microtime(true) - $startTime, 2);
 
-        if (!$imageUrl) {
+        if (! $imageUrl) {
             $this->error('❌ Image generation failed');
             $this->info('💡 Check logs for details: storage/logs/laravel.log');
+
             return self::FAILURE;
         }
 
@@ -84,7 +86,7 @@ class TestImageGeneration extends Command
         $this->info('📤 Sending to Telegram...');
 
         $caption = "✨ Test Image Generated\n";
-        $caption .= "Driver: " . config('services.image_generator.default', 'unknown') . "\n";
+        $caption .= 'Driver: '.config('services.image_generator.default', 'unknown')."\n";
         $caption .= "Time: {$duration}s\n";
         $caption .= "Prompt: {$prompt}";
 
@@ -94,10 +96,12 @@ class TestImageGeneration extends Command
             $this->info('✓ Image sent successfully to Telegram!');
             $this->newLine();
             $this->info('🎉 Test completed successfully!');
+
             return self::SUCCESS;
         } else {
             $this->error('❌ Failed to send image to Telegram');
             $this->info('💡 Check logs for details: storage/logs/laravel.log');
+
             return self::FAILURE;
         }
     }

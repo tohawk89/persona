@@ -2,12 +2,11 @@
 
 namespace App\Livewire;
 
-use Livewire\Component;
-use App\Models\Persona;
+use App\Facades\Brain;
 use App\Models\EventSchedule;
-use App\Models\MemoryTag;
-use App\Facades\GeminiBrain;
+use App\Models\Persona;
 use Illuminate\Support\Facades\Auth;
+use Livewire\Component;
 
 class PersonaDashboard extends Component
 {
@@ -26,17 +25,15 @@ class PersonaDashboard extends Component
     public function triggerWakeUpRoutine()
     {
         try {
-            // Generate daily plan with outfit selection
-            $planData = GeminiBrain::generateDailyPlan(
+            // Generate daily plan
+            $planData = Brain::generateDailyPlan(
                 $this->persona->memoryTags,
                 $this->persona->system_prompt,
                 $this->persona->wake_time,
                 $this->persona->sleep_time
             );
 
-            $events = $planData['events'];
-            $dailyOutfit = $planData['daily_outfit'];
-            $nightOutfit = $planData['night_outfit'];
+            $events = $planData;
 
             // Save events to database
             foreach ($events as $event) {
@@ -49,39 +46,9 @@ class PersonaDashboard extends Component
                 ]);
             }
 
-            // Save/Update daily outfit to memory_tags
-            if ($dailyOutfit) {
-                MemoryTag::updateOrCreate(
-                    [
-                        'persona_id' => $this->persona->id,
-                        'category' => 'daily_outfit',
-                    ],
-                    [
-                        'target' => 'self',
-                        'value' => $dailyOutfit,
-                        'context' => 'Morning routine on ' . now()->format('Y-m-d'),
-                    ]
-                );
-            }
-
-            // Save/Update night outfit to memory_tags
-            if ($nightOutfit) {
-                MemoryTag::updateOrCreate(
-                    [
-                        'persona_id' => $this->persona->id,
-                        'category' => 'night_outfit',
-                    ],
-                    [
-                        'target' => 'self',
-                        'value' => $nightOutfit,
-                        'context' => 'Morning routine on ' . now()->format('Y-m-d'),
-                    ]
-                );
-            }
-
-            session()->flash('success', 'Daily plan generated successfully! ' . count($events) . ' events scheduled.');
+            session()->flash('success', 'Daily plan generated successfully! '.count($events).' events scheduled.');
         } catch (\Exception $e) {
-            session()->flash('error', 'Failed to generate daily plan: ' . $e->getMessage());
+            session()->flash('error', 'Failed to generate daily plan: '.$e->getMessage());
         }
     }
 

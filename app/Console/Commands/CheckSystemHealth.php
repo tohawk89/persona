@@ -2,14 +2,17 @@
 
 namespace App\Console\Commands;
 
-use Illuminate\Console\Command;
-use Illuminate\Support\Facades\{DB, Http, Log};
-use App\Facades\{GeminiBrain, Telegram};
+use App\Facades\Telegram;
 use Gemini;
+use Illuminate\Console\Command;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 
 class CheckSystemHealth extends Command
 {
     protected $signature = 'app:check';
+
     protected $description = 'Run health checks on all external services';
 
     private array $results = [];
@@ -30,16 +33,18 @@ class CheckSystemHealth extends Command
         $this->displayResults();
 
         // Return exit code based on results
-        $failedCount = count(array_filter($this->results, fn($result) => !$result['status']));
+        $failedCount = count(array_filter($this->results, fn ($result) => ! $result['status']));
 
         if ($failedCount > 0) {
             $this->newLine();
             $this->error("❌ {$failedCount} service(s) failed health check");
+
             return Command::FAILURE;
         }
 
         $this->newLine();
         $this->info('✅ All services are healthy');
+
         return Command::SUCCESS;
     }
 
@@ -53,12 +58,12 @@ class CheckSystemHealth extends Command
 
             $this->results['database'] = [
                 'status' => true,
-                'message' => 'Connected (' . count($tables) . ' tables)',
+                'message' => 'Connected ('.count($tables).' tables)',
             ];
         } catch (\Exception $e) {
             $this->results['database'] = [
                 'status' => false,
-                'message' => 'Connection failed: ' . $e->getMessage(),
+                'message' => 'Connection failed: '.$e->getMessage(),
             ];
             Log::error('CheckSystemHealth: Database check failed', ['error' => $e->getMessage()]);
         }
@@ -77,6 +82,7 @@ class CheckSystemHealth extends Command
                     'status' => false,
                     'message' => 'Missing credentials (CLOUDFLARE_ACCOUNT_ID or CLOUDFLARE_API_TOKEN)',
                 ];
+
                 return;
             }
 
@@ -94,13 +100,13 @@ class CheckSystemHealth extends Command
             } else {
                 $this->results['cloudflare'] = [
                     'status' => false,
-                    'message' => 'API request failed (status ' . $response->status() . ')',
+                    'message' => 'API request failed (status '.$response->status().')',
                 ];
             }
         } catch (\Exception $e) {
             $this->results['cloudflare'] = [
                 'status' => false,
-                'message' => 'Request failed: ' . $e->getMessage(),
+                'message' => 'Request failed: '.$e->getMessage(),
             ];
             Log::error('CheckSystemHealth: Cloudflare check failed', ['error' => $e->getMessage()]);
         }
@@ -119,6 +125,7 @@ class CheckSystemHealth extends Command
                     'status' => false,
                     'message' => 'Missing API key (ELEVENLABS_API_KEY)',
                 ];
+
                 return;
             }
 
@@ -144,13 +151,13 @@ class CheckSystemHealth extends Command
             } else {
                 $this->results['elevenlabs'] = [
                     'status' => false,
-                    'message' => 'API request failed (status ' . $response->status() . ')',
+                    'message' => 'API request failed (status '.$response->status().')',
                 ];
             }
         } catch (\Exception $e) {
             $this->results['elevenlabs'] = [
                 'status' => false,
-                'message' => 'Request failed: ' . $e->getMessage(),
+                'message' => 'Request failed: '.$e->getMessage(),
             ];
             Log::error('CheckSystemHealth: ElevenLabs check failed', ['error' => $e->getMessage()]);
         }
@@ -168,6 +175,7 @@ class CheckSystemHealth extends Command
                     'status' => false,
                     'message' => 'Missing API key (GEMINI_API_KEY)',
                 ];
+
                 return;
             }
 
@@ -178,7 +186,7 @@ class CheckSystemHealth extends Command
 
             $text = $response->text();
 
-            if ($response && !empty($text)) {
+            if ($response && ! empty($text)) {
                 $this->results['gemini'] = [
                     'status' => true,
                     'message' => 'Model responded successfully (gemini-2.5-flash)',
@@ -192,7 +200,7 @@ class CheckSystemHealth extends Command
         } catch (\Exception $e) {
             $this->results['gemini'] = [
                 'status' => false,
-                'message' => 'API request failed: ' . $e->getMessage(),
+                'message' => 'API request failed: '.$e->getMessage(),
             ];
             Log::error('CheckSystemHealth: Gemini check failed', ['error' => $e->getMessage()]);
         }
@@ -210,6 +218,7 @@ class CheckSystemHealth extends Command
                     'status' => false,
                     'message' => 'Missing bot token (TELEGRAM_BOT_TOKEN)',
                 ];
+
                 return;
             }
 
@@ -233,7 +242,7 @@ class CheckSystemHealth extends Command
         } catch (\Exception $e) {
             $this->results['telegram'] = [
                 'status' => false,
-                'message' => 'API request failed: ' . $e->getMessage(),
+                'message' => 'API request failed: '.$e->getMessage(),
             ];
             Log::error('CheckSystemHealth: Telegram check failed', ['error' => $e->getMessage()]);
         }

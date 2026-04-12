@@ -2,14 +2,16 @@
 
 namespace App\Jobs;
 
+use App\Facades\Brain;
+use App\Models\MemoryTag;
+use App\Models\Message;
+use App\Models\User;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
-use App\Models\{User, Message, MemoryTag};
-use App\Facades\GeminiBrain;
 
 class ExtractMemoryTags implements ShouldQueue
 {
@@ -35,10 +37,11 @@ class ExtractMemoryTags implements ShouldQueue
         try {
             $persona = $this->user->persona;
 
-            if (!$persona) {
+            if (! $persona) {
                 Log::warning('ExtractMemoryTags: User has no persona', [
                     'user_id' => $this->user->id,
                 ]);
+
                 return;
             }
 
@@ -53,7 +56,7 @@ class ExtractMemoryTags implements ShouldQueue
             }
 
             // Extract memory tags with intelligent add/update/remove operations
-            $changes = GeminiBrain::extractMemoryTags(
+            $changes = Brain::extractMemoryTags(
                 $recentMessages,
                 $persona
             );
@@ -65,8 +68,9 @@ class ExtractMemoryTags implements ShouldQueue
             // Process ADD operations
             foreach ($changes['add'] ?? [] as $tagData) {
                 // Validate required fields
-                if (!isset($tagData['target']) || !isset($tagData['category']) || !isset($tagData['value'])) {
+                if (! isset($tagData['target']) || ! isset($tagData['category']) || ! isset($tagData['value'])) {
                     Log::warning('ExtractMemoryTags: Skipping incomplete tag', ['tag' => $tagData]);
+
                     continue;
                 }
 
@@ -76,15 +80,16 @@ class ExtractMemoryTags implements ShouldQueue
                     'target' => $tagData['target'],
                     'category' => $tagData['category'],
                     'value' => $tagData['value'],
-                    'context' => $tagData['context'] ?? "Extracted on " . now()->format('Y-m-d H:i'),
+                    'context' => $tagData['context'] ?? 'Extracted on '.now()->format('Y-m-d H:i'),
                 ]);
                 $addCount++;
             }
 
             // Process UPDATE operations
             foreach ($changes['update'] ?? [] as $updateData) {
-                if (!isset($updateData['id']) || !isset($updateData['value'])) {
+                if (! isset($updateData['id']) || ! isset($updateData['value'])) {
                     Log::warning('ExtractMemoryTags: Skipping incomplete update', ['update' => $updateData]);
+
                     continue;
                 }
 
@@ -92,7 +97,7 @@ class ExtractMemoryTags implements ShouldQueue
                 if ($tag && $tag->persona_id === $persona->id) {
                     $tag->update([
                         'value' => $updateData['value'],
-                        'context' => $updateData['context'] ?? "Updated on " . now()->format('Y-m-d H:i'),
+                        'context' => $updateData['context'] ?? 'Updated on '.now()->format('Y-m-d H:i'),
                     ]);
                     $updateCount++;
                 } else {
@@ -102,14 +107,14 @@ class ExtractMemoryTags implements ShouldQueue
 
             // Process REMOVE operations
             $removeIds = $changes['remove'] ?? [];
-            if (!empty($removeIds)) {
+            if (! empty($removeIds)) {
                 // Verify all tags belong to this persona before deletion
                 $tagsToRemove = MemoryTag::whereIn('id', $removeIds)
                     ->where('persona_id', $persona->id)
                     ->pluck('id')
                     ->toArray();
 
-                if (!empty($tagsToRemove)) {
+                if (! empty($tagsToRemove)) {
                     MemoryTag::destroy($tagsToRemove);
                     $removeCount = count($tagsToRemove);
                 }

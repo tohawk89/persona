@@ -2,10 +2,11 @@
 
 namespace App\Facades;
 
-use App\Services\GeminiBrainService;
+use App\Services\BrainService;
 use Illuminate\Support\Facades\Facade;
 
 /**
+ * @method static string generate(string $prompt)
  * @method static string generateChatResponse(\Illuminate\Support\Collection $chatHistory, \Illuminate\Support\Collection $memoryTags, string $systemPrompt, \App\Models\Persona $persona)
  * @method static string generateTestResponse(\App\Models\Persona $persona, string $userMessage, array $chatHistory = [])
  * @method static string generateEventResponse(\App\Models\EventSchedule $event, \App\Models\Persona $persona)
@@ -15,12 +16,12 @@ use Illuminate\Support\Facades\Facade;
  * @method static string buildPersonaInstructions(\App\Models\Persona $persona)
  * @method static string processMediaTags(string $text, \App\Models\Persona $persona)
  *
- * @see GeminiBrainService
+ * @see BrainService
  */
-class GeminiBrain extends Facade
+class Brain extends Facade
 {
     protected static function getFacadeAccessor()
     {
-        return GeminiBrainService::class;
+        return BrainService::class;
     }
 }

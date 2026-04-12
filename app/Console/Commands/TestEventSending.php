@@ -2,9 +2,11 @@
 
 namespace App\Console\Commands;
 
+use App\Facades\Brain;
+use App\Facades\Telegram;
+use App\Models\EventSchedule;
+use App\Models\Persona;
 use Illuminate\Console\Command;
-use App\Models\{Persona, EventSchedule};
-use App\Facades\{GeminiBrain, Telegram};
 
 class TestEventSending extends Command
 {
@@ -29,15 +31,17 @@ class TestEventSending extends Command
         // Get persona
         $persona = Persona::with(['user'])->first();
 
-        if (!$persona || !$persona->user) {
+        if (! $persona || ! $persona->user) {
             $this->error('No persona or user found.');
+
             return Command::FAILURE;
         }
 
         $chatId = $persona->user->telegram_chat_id;
 
-        if (!$chatId) {
+        if (! $chatId) {
             $this->error('No Telegram chat ID configured.');
+
             return Command::FAILURE;
         }
 
@@ -68,7 +72,7 @@ class TestEventSending extends Command
         $this->line('🔄 Generating JIT response...');
 
         try {
-            $generatedResponse = GeminiBrain::generateEventResponse($tempEvent, $persona);
+            $generatedResponse = Brain::generateEventResponse($tempEvent, $persona);
 
             $this->newLine();
             $this->info('✅ Generated Response:');
@@ -99,8 +103,9 @@ class TestEventSending extends Command
             $this->newLine();
             $confirm = $this->confirm('Send this message to Telegram?', true);
 
-            if (!$confirm) {
+            if (! $confirm) {
                 $this->info('Cancelled.');
+
                 return Command::SUCCESS;
             }
 
@@ -121,6 +126,7 @@ class TestEventSending extends Command
 
         } catch (\Exception $e) {
             $this->error("❌ Error: {$e->getMessage()}");
+
             return Command::FAILURE;
         }
     }

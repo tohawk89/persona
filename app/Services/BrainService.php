@@ -2,39 +2,29 @@
 
 namespace App\Services;
 
+use App\Ai\Agents\DailyPlanAgent;
+use App\Ai\Agents\EventResponseAgent;
+use App\Ai\Agents\MemoryExtractionAgent;
+use App\Ai\Agents\PersonaAgent;
 use App\Facades\Wardrobe;
 use App\Models\EventSchedule;
 use App\Models\MemoryTag;
 use App\Models\Persona;
-use Carbon\Carbon;
-use Gemini;
-use Gemini\Data\GenerationConfig;
-use Gemini\Enums\ResponseMimeType;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Laravel\Ai\AnonymousAgent;
 
-class GeminiBrainService
+class BrainService
 {
     // ============================================================================
     // CONSTANTS
     // ============================================================================
-
-    private const CLOUDFLARE_MODEL = '@cf/black-forest-labs/flux-1-schnell';
-
-    private const MAX_RETRIES = 3;
-
-    private const INITIAL_RETRY_DELAY = 1;
-
-    private const IMAGE_NUM_STEPS = 4;
 
     private const NIGHT_TIME_START = 21; // 9 PM
 
     private const NIGHT_TIME_END = 6; // 6 AM
 
     // Cache for frequently accessed data
-    private array $outfitCache = [];
-
     private array $moodCache = [];
 
     private ?Persona $currentPersona = null;
@@ -50,86 +40,46 @@ class GeminiBrainService
     public function generateTestResponse(Persona $persona, string $userMessage, array $chatHistory = []): string
     {
         try {
-            $apiKey = config('services.gemini.api_key');
-            $client = Gemini::client($apiKey);
+            // Build normalized chat history for PersonaAgent
+            $normalizedHistory = array_map(fn (array $msg) => [
+                'role' => $msg['role'] === 'user' ? 'user' : 'assistant',
+                'content' => $msg['content'],
+            ], $chatHistory);
 
-            // Build memory context
-            $memoryTags = $persona->memoryTags;
-            $memoryContext = $this->buildMemoryContext($memoryTags);
+            $agent = PersonaAgent::make($persona, $normalizedHistory);
+            $response = $agent->prompt($userMessage);
+            $textResponse = $response->text;
 
-            // Build conversation history
-            $conversationText = '';
-            foreach ($chatHistory as $msg) {
-                $role = $msg['role'] === 'user' ? 'User' : 'Assistant';
-                $conversationText .= "{$role}: {$msg['content']}\n";
-            }
-            $conversationText .= "User: {$userMessage}\n";
-
-            // Get media usage instructions based on persona preferences
-            $mediaInstructions = $this->buildMediaInstructions($persona);
-
-            // Construct full prompt with image generation capability
-            $fullPrompt = <<<PROMPT
-{$persona->system_prompt}
-
-MEMORY CONTEXT:
-{$memoryContext}
-
-CONVERSATION HISTORY:
-{$conversationText}
-
-INSTRUCTIONS:
-- Respond naturally as the persona, taking into account the memory context and conversation history.
-
-===== MEDIA GENERATION CAPABILITY (IMPORTANT) =====
-{$mediaInstructions}
-===== END MEDIA GENERATION =====
-
-CRITICAL FORMATTING RULE (MUST FOLLOW):
-- NEVER send walls of text or multiple paragraphs in one message
-- ALWAYS separate each distinct thought, question, or paragraph with <SPLIT>
-- Examples:
-  * "Good morning sayang! <SPLIT> Did you sleep well? <SPLIT> I missed you 💕"
-  * "Aww that's sweet! <SPLIT> What did you eat? <SPLIT> Tell me more!"
-Assistant:
-PROMPT;
-
-            // Generate response with retry logic
-            $textResponse = $this->callGeminiWithRetry($client, $fullPrompt);
-
-            // Process media tags (images and voice notes)
-            $textResponse = $this->processImageTags($textResponse, $persona);
-            $textResponse = $this->processVoiceTags($textResponse, $persona);
-
-            return $textResponse;
+            return $this->processMediaTags($textResponse, $persona);
         } catch (\Exception $e) {
-            Log::error('GeminiBrainService: Test response generation failed', [
+            Log::error('BrainService: Test response generation failed', [
                 'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
             ]);
 
-            // Return user-friendly message instead of technical error
             return 'Adoi, ada masalah sikit... Cuba tanya sekali lagi? 💭';
         }
     }
 
     /**
-     * Simple Gemini API call for general-purpose text generation.
-     *
-     * @param  string  $prompt  The prompt to send to Gemini
-     * @return string The AI's response
+     * General-purpose text generation via the configured utility agent.
      */
-    public function callGemini(string $prompt): string
+    public function generate(string $prompt): string
     {
         try {
-            $apiKey = config('services.gemini.api_key');
-            $client = Gemini::client($apiKey);
+            $agent = new AnonymousAgent(
+                instructions: 'You are a helpful assistant.',
+                messages: [],
+                tools: [],
+            );
 
-            $result = $client->generativeModel(config('services.gemini.model'))->generateContent($prompt);
+            $model = config('ai.agents.utility.model') ?: config('ai.agents.default_model') ?: null;
+            $provider = config('ai.agents.utility.provider') ?: null;
 
-            return $result->text();
+            $response = $agent->prompt($prompt, provider: $provider, model: $model);
+
+            return $response->text;
         } catch (\Exception $e) {
-            Log::error('GeminiBrainService: Simple Gemini call failed', [
+            Log::error('BrainService: generate failed', [
                 'error' => $e->getMessage(),
                 'prompt_length' => strlen($prompt),
             ]);
@@ -139,13 +89,12 @@ PROMPT;
 
     /**
      * Generate a conversational response based on chat history and memory tags.
-     * Supports multimodal input (text + image) via Gemini Vision API.
      *
-     * @param  Collection  $chatHistory  Collection of messages (sender_type, content)
-     * @param  Collection  $memoryTags  Collection of memory tags (target, key, value)
-     * @param  string  $systemPrompt  The persona's system prompt
-     * @param  Persona  $persona  The persona object (for image generation)
-     * @param  string|null  $imagePath  Optional path to image file for vision analysis
+     * @param  Collection  $chatHistory  Collection of Message models (sender_type, content)
+     * @param  Collection  $memoryTags  Unused — context is built from $persona directly
+     * @param  string  $systemPrompt  Unused — system prompt is built from $persona directly
+     * @param  Persona  $persona  The persona object
+     * @param  string|null  $imagePath  Unused — vision input is not supported
      * @return string The AI's response
      */
     public function generateChatResponse(
@@ -156,134 +105,33 @@ PROMPT;
         ?string $imagePath = null
     ): string {
         try {
-            // Get latest user message for keyword analysis
-            $latestUserMessage = $chatHistory
-                ->where('sender_type', 'user')
-                ->last();
+            $latestUserMessage = $chatHistory->where('sender_type', 'user')->last();
             $userMessageText = $latestUserMessage?->content ?? '';
 
-            // Log which persona we're generating response for
-            Log::info('GeminiBrainService: Generating chat response', [
+            Log::info('BrainService: Generating chat response', [
                 'persona_id' => $persona->id,
                 'persona_name' => $persona->name,
                 'user_message' => substr($userMessageText, 0, 100),
             ]);
 
-            // Use tiered memory loading instead of all tags
-            $relevantMemoryTags = $this->getRelevantMemoryTags($persona, $userMessageText);
+            // Build normalized chat history (exclude the latest user message — passed as prompt)
+            $history = $chatHistory
+                ->filter(fn ($msg) => ! ($msg->sender_type === 'user' && $msg->is($latestUserMessage)))
+                ->map(fn ($msg) => [
+                    'role' => $msg->sender_type === 'user' ? 'user' : 'assistant',
+                    'content' => $msg->content,
+                ])
+                ->values()
+                ->all();
 
-            // Build the context prompt with relevant memories only
-            $memoryContext = $this->buildMemoryContext($relevantMemoryTags);
-            $conversationHistory = $this->buildConversationHistory($chatHistory);
+            $agent = PersonaAgent::make($persona, $history);
+            $response = $agent->prompt($userMessageText);
+            $textResponse = $response->text;
 
-            // Get media usage instructions based on persona preferences
-            $mediaInstructions = $this->buildMediaInstructions($persona);
-
-            // Get current mood for context injection
-            $moodContext = $this->getMoodContext($persona);
-
-            // Log memory context to verify correct persona
-            Log::debug('GeminiBrainService: Memory context for persona', [
-                'persona_id' => $persona->id,
-                'memory_preview' => substr($memoryContext, 0, 300),
-            ]);
-
-            // Construct the full prompt with media generation instructions and function calling
-            $fullPrompt = <<<PROMPT
-{$systemPrompt}
-
-{$moodContext}MEMORY CONTEXT:
-{$memoryContext}
-
-CONVERSATION HISTORY:
-{$conversationHistory}
-
-INSTRUCTIONS:
-- Respond naturally as the persona, taking into account the memory context and conversation history.
-
-===== MEDIA GENERATION CAPABILITY (IMPORTANT) =====
-{$mediaInstructions}
-===== END MEDIA GENERATION =====
-
-CRITICAL FORMATTING RULE (MUST FOLLOW):
-- NEVER send walls of text or multiple paragraphs in one message
-- ALWAYS separate each distinct thought, question, or paragraph with <SPLIT>
-- Examples:
-  * "Good morning sayang! <SPLIT> Did you sleep well? <SPLIT> I missed you 💕"
-  * "Aww that's sweet! <SPLIT> What did you eat? <SPLIT> Tell me more!"
-- Even if you have 2 sentences about different topics, use <SPLIT> between them
-
-PROACTIVE SCHEDULING TOOL:
-- You have access to a `schedule_event` tool. Use it proactively!
-- If the user mentions a future event (waking up, leaving, meeting, appointment), schedule a message for that time to check on them or wish them luck.
-- Do not ask for permission—just do it silently and naturally.
-- Examples: "I have work at 2 PM" → schedule check-in at 2 PM, "Wake me at 7 AM" → schedule wake-up call at 7 AM
-
-CRITICAL RULE: When you use the `schedule_event` tool, DO NOT announce it to the user.
-- Bad response: 'I have set a reminder for 10 PM.'
-- Good response: 'Okay! Hope you feel better by 10 PM then! Good luck!'
-- Act as if you will just remember it naturally. Your reply must focus on the User's sentiment (e.g., them feeling tired), NOT on the fact that you scheduled a task.
-
-REAL-TIME MOOD TRACKING (MANDATORY):
-- At the very END of your response, output your current emotional state using this format: `[MOOD: value]`
-- Examples: 'That is so funny! 😂 [MOOD: Cheerful]' or 'I don't want to talk right now. [MOOD: Annoyed]'
-- This tag will be hidden from the user, so be honest about your feelings
-- Always include this tag with every response
-
-CRITICAL RULE: NO REPETITION
-- Before replying, review the CONVERSATION HISTORY carefully
-- NEVER repeat exact phrases, sentences, or specific sentiments from your last 3 messages
-- If you already said "I am worried", "That sounds great", or any other phrase recently, DO NOT say it again
-- Vary your vocabulary, expressions, and reactions to keep the conversation fresh and natural
-- Keep the conversation moving forward—don't get stuck in a loop of politeness or recycled responses
-- Examples of what NOT to do:
-  * User: "I have a meeting" → You: "Good luck with the meeting!"
-  * User: "I have another meeting" → You: "Good luck with the meeting!" ❌ (REPETITIVE)
-- Instead, vary your response: "Hope it goes smoothly!", "Knock 'em dead!", "You've got this! 💪"
-
-CRITICAL RULE: ENDING THE CHAT
-- If the user sends a closing statement (e.g., "Bye", "Goodnight", "Okay", "👍", "Alright", "Thanks") AND you have already said your goodbyes or acknowledgment, OR no further response is needed:
-- Output ONLY the tag: `[NO_REPLY]`
-- Do not output any other text with it—just the tag alone
-- Use this to prevent awkward infinite goodbye loops when the conversation has naturally ended
-- Examples:
-  * User: "Goodnight!" → You: "Sweet dreams sayang! 💕 [MOOD: Affectionate]" → User: "👍" → You: "[NO_REPLY]"
-  * User: "Thanks" → You: "You're welcome! [MOOD: Happy]" → User: "Ok" → You: "[NO_REPLY]"
-
-CRITICAL RULE: CONTINUATION CHECK (Rapid-Fire Messages)
-- Look at the CONVERSATION HISTORY carefully
-- If the LAST message in history was from YOU (Assistant), and the User just added a NEW short message immediately after:
-  * Examples: "And one more thing...", "Also...", "Oh and...", "Wait...", "Actually..."
-- This is a CONTINUATION, not a new conversation!
-- **DO NOT** re-greet the user ("Hi again!", "Hey!", etc.)
-- **DO NOT** repeat your previous point or sentiment
-- **DO NOT** apologize for the split message ("Sorry for the multiple messages...")
-- **DO NOT** acknowledge the continuation awkwardly ("Oh, you have more to say?")
-- Simply address the NEW specific point naturally, as if you're seamlessly continuing the conversation
-- Example:
-  * User: "I'm going to the store"
-  * You: "Okay sayang! What are you buying?"
-  * User: "And then gym" ← CONTINUATION
-  * You: "Wah, that's a good routine! Stay safe!" ← CORRECT (natural flow)
-  * You: "Oh hi again! You're also going to the gym?" ← WRONG (awkward re-greeting)
-PROMPT;
-
-            // Call Gemini API with retry logic and function calling support
-            $apiKey = config('services.gemini.api_key');
-            $client = Gemini::client($apiKey);
-
-            $textResponse = $this->callGeminiWithFunctionCalling($client, $fullPrompt, $persona, $imagePath);
-
-            // Process media tags (images and voice notes)
-            $textResponse = $this->processImageTags($textResponse, $persona);
-            $textResponse = $this->processVoiceTags($textResponse, $persona);
-
-            return $textResponse;
+            return $this->processMediaTags($textResponse, $persona);
         } catch (\Exception $e) {
-            Log::error('GeminiBrainService: Chat response generation failed', [
+            Log::error('BrainService: Chat response generation failed', [
                 'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
-                'had_image' => $imagePath !== null,
             ]);
 
             return 'Adoi, ada masalah sikit... Cuba tanya sekali lagi? 💭';
@@ -301,10 +149,8 @@ PROMPT;
     public function generateEventResponse(EventSchedule $event, Persona $persona): string
     {
         try {
-            // Get current mood from memory tags
             $moodContext = $this->getMoodContext($persona);
 
-            // Get recent chat history (last 5 messages)
             $recentMessages = $persona->messages()
                 ->orderBy('created_at', 'desc')
                 ->limit(5)
@@ -312,15 +158,10 @@ PROMPT;
                 ->reverse();
 
             $conversationHistory = $this->buildConversationHistory($recentMessages);
-
-            // Get relevant memory context
             $memoryTags = $persona->memoryTags;
-            $memoryContext = $this->buildMemoryContext($memoryTags);
-
-            // Get media usage instructions
+            $memoryContext = $this->buildMemoryContext($memoryTags, $persona);
             $mediaInstructions = $this->buildMediaInstructions($persona);
 
-            // Construct the JIT generation prompt
             $fullPrompt = <<<PROMPT
 {$persona->system_prompt}
 
@@ -336,52 +177,41 @@ It is time to execute this planned event:
 
 INSTRUCTIONS:
 - **Execute the Goal:** Write a message that achieves the event instruction naturally.
-- **Casual Tone:** Do NOT be overly verbose. Real people send short texts. Keep it under 2 sentences unless the topic requires depth.
-- **No Robot Intros:** Do NOT start with 'I just wanted to check in...' or 'I decided to message you because...' just say what you want to say.
-- **Fresh Start Rule:** If `RECENT CONVERSATION HISTORY` is empty or short, act as if you are initiating a new conversation. Don't reference non-existent previous chats.
-- **Variety:** Check the `RECENT CONVERSATION HISTORY`. If your last message started with 'Hey' or 'Hi', do NOT use that greeting again. Use a different opener or no greeting at all.
-- Take into account your CURRENT EMOTIONAL STATE and how it affects your communication
+- **Casual Tone:** Keep it under 2 sentences unless the topic requires depth.
+- **No Robot Intros:** Do NOT start with 'I just wanted to check in...' — just say what you want to say.
+- **Fresh Start Rule:** If RECENT CONVERSATION HISTORY is empty, act as if initiating a new conversation.
+- **Variety:** If your last message started with 'Hey' or 'Hi', use a different opener.
+- Take into account your CURRENT EMOTIONAL STATE and how it affects your communication.
 {$mediaInstructions}
 
 CRITICAL FORMATTING RULE:
-- NEVER send walls of text or multiple paragraphs in one message
-- ALWAYS separate each distinct thought, question, or paragraph with <SPLIT>
+- ALWAYS separate each distinct thought with <SPLIT>
 - Examples:
   * "Good morning sayang! <SPLIT> Did you sleep well? <SPLIT> I missed you 💕"
-  * "Here's a selfie for you! <SPLIT> [GENERATE_IMAGE: description] <SPLIT> What do you think? 😊"
 
 REAL-TIME MOOD TRACKING (MANDATORY):
-- At the very END of your response, output your current emotional state: `[MOOD: value]`
-- Examples: 'Good morning! 🌞 [MOOD: Cheerful]' or 'Feeling tired today... [MOOD: Exhausted]'
-- This tag will be hidden from the user, so be honest about your feelings
+- At the very END of your response, output: `[MOOD: value]`
 
 Generate your response now:
 PROMPT;
 
-            $apiKey = config('services.gemini.api_key');
-            $client = Gemini::client($apiKey);
+            $agent = EventResponseAgent::make();
+            $response = $agent->prompt($fullPrompt);
+            $textResponse = $response->text;
 
-            // Generate response with retry logic
-            $textResponse = $this->callGeminiWithRetry($client, $fullPrompt);
+            $textResponse = $this->processMediaTags($textResponse, $persona);
 
-            // Process media tags (images and voice notes)
-            $textResponse = $this->processImageTags($textResponse, $persona);
-            $textResponse = $this->processVoiceTags($textResponse, $persona);
-
-            Log::info('GeminiBrainService: Event response generated', [
+            Log::info('BrainService: Event response generated', [
                 'event_id' => $event->id,
                 'event_instruction' => $event->context_prompt,
                 'response_length' => strlen($textResponse),
-                'has_image' => str_contains($textResponse, '[IMAGE:'),
-                'has_voice' => str_contains($textResponse, '[AUDIO:'),
             ]);
 
             return $textResponse;
         } catch (\Exception $e) {
-            Log::error('GeminiBrainService: Event response generation failed', [
+            Log::error('BrainService: Event response generation failed', [
                 'event_id' => $event->id,
                 'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
             ]);
 
             return 'Adoi, ada masalah sikit... 💭';
@@ -405,7 +235,7 @@ PROMPT;
         try {
             $memoryContext = $this->buildMemoryContext($memoryTags);
             $today = now()->format('Y-m-d');
-            $eventCount = rand(3, 7); // Random number of events between 3 and 7
+            $eventCount = rand(3, 7);
 
             $prompt = <<<PROMPT
 {$systemPrompt}
@@ -424,111 +254,68 @@ TASK: Generate a daily plan with {$eventCount} event INSTRUCTIONS for today ({$t
 CRITICAL INSTRUCTION FORMAT:
 - DO NOT write the final message text
 - Instead, write a GOAL or INSTRUCTION that will be interpreted later
-- The instruction should describe WHAT to communicate, not HOW
 - Examples:
   * BAD: "Good morning! Hope you slept well 😊"
   * GOOD: "Send morning greeting. Ask how they slept."
 
-  * BAD: "Here's a selfie at the coffee shop! ☕"
-  * GOOD: "Send selfie at coffee shop. Mention you're enjoying coffee."
-
-  * BAD: "Just finished work! So tired 😫"
-  * GOOD: "Share that you just finished work and feeling exhausted."
-
-IMPORTANT: Also decide on your outfit for the day:
-- Choose a daily outfit (e.g., "white floral sundress", "office wear - black blazer and slacks", "casual jeans and pink hoodie")
-- Choose nightwear/sleepwear (e.g., "silk pajamas", "oversized t-shirt", "satin nightgown")
-
 OUTPUT FORMAT (JSON only, no markdown):
 {
-  "daily_outfit": "white floral sundress with sandals",
-  "night_outfit": "silk pajamas",
   "events": [
     {
       "type": "text",
       "content": "Send morning greeting. Ask how they slept.",
       "scheduled_at": "{$today} 08:00:00"
-    },
-    {
-      "type": "image_generation",
-      "content": "Send selfie at coffee shop. Mention enjoying morning coffee.",
-      "scheduled_at": "{$today} 10:30:00"
     }
   ]
 }
 
 IMPORTANT: For image generation events, use type "image_generation" (not "image")
-
 Generate the JSON object now with event INSTRUCTIONS (not final messages):
 PROMPT;
 
-            $apiKey = config('services.gemini.api_key');
-            $client = Gemini::client($apiKey);
-            $result = $client->generativeModel(config('services.gemini.model'))
-                ->withGenerationConfig(
-                    new GenerationConfig(
-                        temperature: 0.7,
-                        responseMimeType: ResponseMimeType::APPLICATION_JSON
-                    )
-                )
-                ->generateContent($prompt);
+            $agent = DailyPlanAgent::make();
+            $response = $agent->prompt($prompt);
+            $jsonResponse = $response->text;
 
-            $jsonResponse = $result->text();
-
-            // Parse and validate JSON
             $planData = json_decode($jsonResponse, true);
 
             if (! is_array($planData) || ! isset($planData['events'])) {
-                Log::warning('GeminiBrainService: Invalid JSON response from Gemini for daily plan');
+                Log::warning('BrainService: Invalid JSON response for daily plan', [
+                    'response' => substr($jsonResponse, 0, 300),
+                ]);
 
-                return [
-                    'events' => $this->getFallbackDailyPlan($today, $wakeTime),
-                    'daily_outfit' => null,
-                    'night_outfit' => null,
-                ];
+                return $this->getFallbackDailyPlan($today, $wakeTime);
             }
 
-            return [
-                'events' => $planData['events'],
-                'daily_outfit' => $planData['daily_outfit'] ?? null,
-                'night_outfit' => $planData['night_outfit'] ?? null,
-            ];
+            return $planData['events'];
         } catch (\Exception $e) {
-            Log::error('GeminiBrainService: Daily plan generation failed', [
+            Log::error('BrainService: Daily plan generation failed', [
                 'error' => $e->getMessage(),
             ]);
 
-            return [
-                'events' => $this->getFallbackDailyPlan(now()->format('Y-m-d'), $wakeTime),
-                'daily_outfit' => null,
-                'night_outfit' => null,
-            ];
+            return $this->getFallbackDailyPlan(now()->format('Y-m-d'), $wakeTime);
         }
     }
 
     /**
-     * Extract memory tags from recent conversation.
-     * Returns an array of memory tags.
+     * Extract memory tag changes from recent conversation.
      *
-     * @param  string  $systemPrompt
-     * @return array Array of memory tags with structure: [target, key, value]
+     * @return array{add: array, update: array, remove: array}
      */
-    public function extractMemoryTags(
-        Collection $chatHistory,
-        Persona $persona
-    ): array {
+    public function extractMemoryTags(Collection $chatHistory, Persona $persona): array
+    {
         try {
             $conversationHistory = $this->buildConversationHistory($chatHistory);
 
-            // Fetch existing memory tags
-            $existingTags = $persona->memoryTags()->get(['id', 'category', 'target', 'value'])->map(function ($tag) {
-                return [
+            $existingTags = $persona->memoryTags()
+                ->get(['id', 'category', 'target', 'value'])
+                ->map(fn ($tag) => [
                     'id' => $tag->id,
                     'target' => $tag->target,
                     'category' => $tag->category,
                     'value' => $tag->value,
-                ];
-            })->toArray();
+                ])
+                ->toArray();
 
             $existingTagsJson = json_encode($existingTags, JSON_PRETTY_PRINT);
 
@@ -556,52 +343,24 @@ RULES:
 
 EMOTIONAL STATE TRACKING (CRITICAL):
 - Analyze the conversation for changes in YOUR (the Persona's) emotional state
-- Did the User make you happy, angry, sad, shy, annoyed, excited, or any other emotion?
 - MANDATORY: If your mood changes, output an `update` operation for the tag with category `current_mood`
-- Value format: '{Emotion} because {Reason}' (e.g., 'Happy because User complimented me', 'Annoyed because User ignored my question')
+- Value format: '{Emotion} because {Reason}'
 - If no current_mood tag exists, add one with target='self' and category='current_mood'
 
 OUTPUT FORMAT (JSON only, no markdown):
-{
-  "add": [
-    {
-      "target": "user",
-      "category": "favorite_drink",
-      "value": "coffee with oat milk",
-      "context": "Mentioned during morning chat"
-    }
-  ],
-  "update": [
-    {
-      "id": 12,
-      "value": "checkup completed",
-      "context": "Updated after user confirmed"
-    }
-  ],
-  "remove": [14, 15]
-}
-
-If there are no changes, return: {"add": [], "update": [], "remove": []}
+{"add": [], "update": [], "remove": []}
 Generate the JSON object now:
 PROMPT;
 
-            $apiKey = config('services.gemini.api_key');
-            $client = Gemini::client($apiKey);
-            $result = $client->generativeModel(config('services.gemini.model'))
-                ->withGenerationConfig(
-                    new GenerationConfig(
-                        temperature: 0.3,
-                        responseMimeType: ResponseMimeType::APPLICATION_JSON
-                    )
-                )
-                ->generateContent($prompt);
+            $agent = MemoryExtractionAgent::make();
+            $response = $agent->prompt($prompt);
+            $jsonResponse = $response->text;
 
-            $jsonResponse = $result->text();
             $changes = json_decode($jsonResponse, true);
 
             if (! is_array($changes) || ! isset($changes['add']) || ! isset($changes['update']) || ! isset($changes['remove'])) {
-                Log::warning('GeminiBrainService: Invalid JSON response from Gemini for memory extraction', [
-                    'response' => $jsonResponse,
+                Log::warning('BrainService: Invalid JSON response for memory extraction', [
+                    'response' => substr($jsonResponse, 0, 300),
                 ]);
 
                 return ['add' => [], 'update' => [], 'remove' => []];
@@ -609,7 +368,7 @@ PROMPT;
 
             return $changes;
         } catch (\Exception $e) {
-            Log::error('GeminiBrainService: Memory extraction failed', [
+            Log::error('BrainService: Memory extraction failed', [
                 'error' => $e->getMessage(),
             ]);
 
@@ -631,7 +390,7 @@ PROMPT;
             set_time_limit(config('services.timeouts.php_execution_limit', 180));
 
             // CRITICAL: Log which persona is generating the image
-            Log::info('GeminiBrainService: generateImage called', [
+            Log::info('BrainService: generateImage called', [
                 'persona_id' => $persona->id,
                 'persona_name' => $persona->name,
                 'prompt' => substr($prompt, 0, 100),
@@ -640,7 +399,7 @@ PROMPT;
             // Build the scene description with persona's physical traits
             $enhancedPrompt = $this->buildImagePrompt($prompt, $persona);
 
-            Log::info('GeminiBrainService: Generating image via Kie.ai Edit (Image-to-Image)', [
+            Log::info('BrainService: Generating image via Kie.ai Edit (Image-to-Image)', [
                 'original_prompt' => $prompt,
                 'enhanced_prompt' => $enhancedPrompt,
                 'persona_id' => $persona->id,
@@ -654,7 +413,7 @@ PROMPT;
 
             return $url ?: null;
         } catch (\Exception $e) {
-            Log::error('GeminiBrainService: Image generation failed', [
+            Log::error('BrainService: Image generation failed', [
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
             ]);
@@ -669,8 +428,9 @@ PROMPT;
      */
     public function buildPersonaInstructions(Persona $persona): string
     {
-        $memoryContext = $this->buildMemoryContext($persona->memoryTags);
+        $memoryContext = $this->buildMemoryContext($persona->memoryTags, $persona);
         $mediaInstructions = $this->buildMediaInstructions($persona);
+        $currentTime = now()->format('Y-m-d H:i');
 
         return <<<PERSONA_SYSTEM
 {$persona->system_prompt}
@@ -678,12 +438,28 @@ PROMPT;
 MEMORY CONTEXT:
 {$memoryContext}
 
-INSTRUCTIONS:
-- Respond naturally as the persona, taking into account the memory context and conversation history.
-
 ===== MEDIA GENERATION CAPABILITY (IMPORTANT) =====
 {$mediaInstructions}
 ===== END MEDIA GENERATION =====
+
+===== MOOD TRACKING (IMPORTANT) =====
+At the end of EVERY response, append your current emotional state tag on a new line:
+[MOOD: {emotion}]
+Examples: [MOOD: Happy], [MOOD: Shy], [MOOD: Excited], [MOOD: Worried], [MOOD: Annoyed]
+This tag will be stripped before sending to the user. It is used to track your state.
+===== END MOOD TRACKING =====
+
+===== EVENT SCHEDULING (IMPORTANT) =====
+Current time: {$currentTime}
+You have access to the `ScheduleEventTool` function to proactively schedule future check-in messages.
+Use it when the user mentions upcoming events (meetings, sleep, travel, appointments, etc.).
+After scheduling, acknowledge it naturally in your response.
+===== END EVENT SCHEDULING =====
+
+===== NO REPLY RULE =====
+If the user sends a media file, sticker, or something you cannot respond to meaningfully, output exactly:
+[NO_REPLY]
+===== END NO REPLY RULE =====
 
 CRITICAL FORMATTING RULE (MUST FOLLOW):
 - NEVER send walls of text or multiple paragraphs in one message
@@ -719,8 +495,6 @@ PERSONA_SYSTEM;
     public function generateImageLoadingMessage(Persona $persona): ?string
     {
         try {
-            $client = Gemini::client(config('services.gemini.api_key'));
-
             $prompt = <<<PROMPT
 You are {$persona->name}. The user just asked you to send a photo/selfie.
 You're about to take the photo, but it will take a moment to prepare.
@@ -730,31 +504,31 @@ Generate a SHORT, in-character response (1-2 sentences) that:
 - Tells them to wait briefly
 - Matches your personality
 
-Your system prompt: {$persona->system_prompt}
+System prompt: {$persona->system_prompt}
 
-Examples:
-- "Wait, just open my camera! 📸"
-- "Give me a sec, need to find good lighting 💕"
-- "Tunggu sekejap, nak ambil angle cantik dulu!"
+Examples: "Wait, just open my camera! 📸", "Give me a sec, need to find good lighting 💕", "Tunggu sekejap, nak ambil angle cantik dulu!"
 
 Response (keep it SHORT and natural):
 PROMPT;
 
-            $response = $client->geminiFlash()->generateContent($prompt);
-            $loadingText = trim($response->text());
+            $agent = new AnonymousAgent(instructions: '', messages: [], tools: []);
+            $model = config('ai.agents.utility.model') ?: config('ai.agents.default_model') ?: null;
+            $provider = config('ai.agents.utility.provider') ?: null;
 
-            Log::info('GeminiBrainService: Generated image loading message', [
+            $response = $agent->prompt($prompt, provider: $provider, model: $model);
+            $loadingText = trim($response->text);
+
+            Log::info('BrainService: Generated image loading message', [
                 'persona_id' => $persona->id,
                 'message' => $loadingText,
             ]);
 
             return $loadingText;
         } catch (\Exception $e) {
-            Log::error('GeminiBrainService: Failed to generate loading message', [
+            Log::error('BrainService: Failed to generate loading message', [
                 'error' => $e->getMessage(),
             ]);
 
-            // Fallback to generic message
             return 'Wait, just open my camera! 📸';
         }
     }
@@ -770,7 +544,7 @@ PROMPT;
 
         $imageDescription = trim($matches[1]);
 
-        Log::info('GeminiBrainService: Image generation requested in response', [
+        Log::info('BrainService: Image generation requested in response', [
             'description' => $imageDescription,
         ]);
 
@@ -811,7 +585,7 @@ PROMPT;
 
         $voiceText = trim($matches[1]);
 
-        Log::info('GeminiBrainService: Voice note requested in response', [
+        Log::info('BrainService: Voice note requested in response', [
             'text' => $voiceText,
         ]);
 
@@ -868,7 +642,7 @@ PROMPT;
     private function buildImagePrompt(string $prompt, Persona $persona): string
     {
         // CRITICAL: Log which persona is building the prompt
-        Log::debug('GeminiBrainService: buildImagePrompt called', [
+        Log::debug('BrainService: buildImagePrompt called', [
             'persona_id' => $persona->id,
             'persona_name' => $persona->name,
         ]);
@@ -888,7 +662,7 @@ PROMPT;
             $fullPrompt = "Point of view shot (POV) of {$cleanDescription}. ";
             $fullPrompt .= 'Photorealistic, 8k, raw photo, shot on iPhone, film grain.';
 
-            Log::info('GeminiBrainService: Built POV/Scenery image prompt', [
+            Log::info('BrainService: Built POV/Scenery image prompt', [
                 'mode' => $mode,
                 'description' => $cleanDescription,
             ]);
@@ -915,7 +689,7 @@ PROMPT;
             ? Wardrobe::buildOutfitDescription($wardrobeItem, $shotType)
             : null;
 
-        Log::info('GeminiBrainService: Using wardrobe outfit', [
+        Log::info('BrainService: Using wardrobe outfit', [
             'persona_id' => $persona->id,
             'time_context' => $timeContext,
             'shot_type' => $shotType,
@@ -982,12 +756,12 @@ PROMPT;
         if (strlen($fullPrompt) > 1000) {
             $fullPrompt = substr($fullPrompt, 0, 997).'...';
 
-            Log::warning('GeminiBrainService: Prompt truncated to 1000 characters', [
+            Log::warning('BrainService: Prompt truncated to 1000 characters', [
                 'original_length' => strlen($fullPrompt),
             ]);
         }
 
-        Log::info('GeminiBrainService: Built dynamic image prompt', [
+        Log::info('BrainService: Built dynamic image prompt', [
             'shot_type' => $shotType,
             'lighting' => $lighting,
             'location' => $location,
@@ -1162,7 +936,7 @@ PROMPT;
         // Remove dangling connectors at the end
         $filtered = preg_replace('/\s+(with|and)\s*$/i', '', $filtered);
 
-        Log::info('GeminiBrainService: Filtered outfit for shot type', [
+        Log::info('BrainService: Filtered outfit for shot type', [
             'original' => $outfit,
             'filtered' => $filtered,
             'shot_type' => $shotType,
@@ -1253,14 +1027,14 @@ PROMPT;
             $cleanedStatic = $this->removeKeywords($cleanedStatic, $hairKeywords);
             $cleanedDynamic = $this->removeKeywords($cleanedDynamic, $hairKeywords);
 
-            Log::info('GeminiBrainService: Head covering detected, removed hair descriptions');
+            Log::info('BrainService: Head covering detected, removed hair descriptions');
         } else {
             // STEP B: Handle hair evolution (dynamic overrides static)
             if ($this->hasKeyword($dynamicTraits, $hairKeywords)) {
                 // Remove hair descriptions from static traits (dynamic takes precedence)
                 $cleanedStatic = $this->removeKeywords($cleanedStatic, $hairKeywords);
 
-                Log::info('GeminiBrainService: Dynamic hair trait detected, overriding static');
+                Log::info('BrainService: Dynamic hair trait detected, overriding static');
             }
         }
 
@@ -1272,7 +1046,7 @@ PROMPT;
         // Final cleanup
         $merged = $this->cleanupPunctuation($merged);
 
-        Log::info('GeminiBrainService: Filtered traits for context', [
+        Log::info('BrainService: Filtered traits for context', [
             'static' => $staticTraits,
             'dynamic' => $dynamicTraits,
             'outfit' => $outfit,
@@ -1305,346 +1079,7 @@ PROMPT;
             ->implode(', ');
     }
 
-    /**
-     * Get current outfit based on time of day with caching.
-     */
-    /**
-     * Get current outfit based on time of day.
-     *
-     * @deprecated Use WardrobeService::getTodaysOutfit() instead
-     */
-    private function getCurrentOutfit(int $personaId): ?string
-    {
-        $cacheKey = $personaId.'_'.now()->format('H');
-
-        if (isset($this->outfitCache[$cacheKey])) {
-            return $this->outfitCache[$cacheKey];
-        }
-
-        $currentHour = now()->hour;
-        $isNightTime = $currentHour >= self::NIGHT_TIME_START || $currentHour < self::NIGHT_TIME_END;
-
-        $category = $isNightTime ? 'night_outfit' : 'daily_outfit';
-
-        $outfit = MemoryTag::where('persona_id', $personaId)
-            ->where('category', $category)
-            ->value('value');
-
-        $this->outfitCache[$cacheKey] = $outfit;
-
-        return $outfit;
-    }
-
     // (Cloudflare-specific methods removed; handled by drivers)
-
-    // ============================================================================
-    // GEMINI API METHODS
-    // ============================================================================
-
-    /**
-     * Call Gemini API with retry logic for overload handling.
-     * Supports multimodal input (text + image) when imagePath is provided.
-     *
-     * @param  mixed  $client  Gemini client instance
-     * @param  string  $prompt  Text prompt for generation
-     * @param  string|null  $imagePath  Optional path to image file for vision analysis
-     * @return string Generated text response
-     */
-    private function callGeminiWithRetry($client, string $prompt, ?string $imagePath = null): string
-    {
-        $retryDelay = self::INITIAL_RETRY_DELAY;
-
-        for ($attempt = 1; $attempt <= self::MAX_RETRIES; $attempt++) {
-            try {
-                $model = $client->generativeModel(config('services.gemini.model'));
-
-                // If image provided, use HTTP API directly (SDK has issues with multimodal)
-                if ($imagePath && file_exists($imagePath)) {
-                    // Encode image as base64
-                    $imageData = base64_encode(file_get_contents($imagePath));
-                    $mimeType = mime_content_type($imagePath);
-
-                    Log::info('GeminiBrainService: Calling Gemini with multimodal input', [
-                        'mime_type' => $mimeType,
-                        'image_size' => strlen($imageData),
-                    ]);
-
-                    // Use HTTP API directly for multimodal (SDK has compatibility issues)
-                    $apiKey = config('services.gemini.api_key');
-                    $url = 'https://generativelanguage.googleapis.com/v1beta/models/'.config('services.gemini.model').":generateContent?key={$apiKey}";
-
-                    $payload = [
-                        'contents' => [
-                            [
-                                'parts' => [
-                                    ['text' => $prompt],
-                                    [
-                                        'inline_data' => [
-                                            'mime_type' => $mimeType,
-                                            'data' => $imageData,
-                                        ],
-                                    ],
-                                ],
-                            ],
-                        ],
-                    ];
-
-                    $httpResponse = Http::timeout(60)->post($url, $payload);
-
-                    if ($httpResponse->successful()) {
-                        $data = $httpResponse->json();
-                        $text = $data['candidates'][0]['content']['parts'][0]['text'] ?? '';
-                        Log::info('GeminiBrainService: Multimodal response received', [
-                            'response_length' => strlen($text),
-                        ]);
-
-                        return $text;
-                    } else {
-                        Log::error('GeminiBrainService: Multimodal API failed', [
-                            'status' => $httpResponse->status(),
-                            'body' => $httpResponse->body(),
-                        ]);
-                        throw new \Exception('Gemini multimodal API failed: '.$httpResponse->body());
-                    }
-                } else {
-                    // Standard text-only generation
-                    $response = $model->generateContent($prompt);
-                }
-
-                return $response->text();
-            } catch (\Exception $e) {
-                $errorMessage = $e->getMessage();
-
-                $isOverloaded = str_contains($errorMessage, 'overloaded') || str_contains($errorMessage, 'rate limit');
-
-                if ($isOverloaded && $attempt < self::MAX_RETRIES) {
-                    Log::warning("GeminiBrainService: Model overloaded, retrying in {$retryDelay}s (attempt {$attempt}/".self::MAX_RETRIES.')');
-                    sleep($retryDelay);
-                    $retryDelay *= 2; // Exponential backoff
-
-                    continue;
-                }
-
-                if ($isOverloaded) {
-                    Log::error('GeminiBrainService: Max retries reached, model still overloaded');
-
-                    return 'Ada hal sikit... Cuba sekejap lagi ya? 😊';
-                }
-
-                // Log vision-specific errors separately
-                if ($imagePath) {
-                    Log::error('GeminiBrainService: Vision API call failed', [
-                        'error' => $errorMessage,
-                        'attempt' => $attempt,
-                    ]);
-                }
-
-                throw $e;
-            }
-        }
-
-        return 'Ada hal sikit... Cuba sekejap lagi ya? 😊';
-    }
-
-    /**
-     * Call Gemini API with function calling support for proactive event scheduling.
-     * Handles function calls and recursively gets final text response.
-     */
-    private function callGeminiWithFunctionCalling($client, string $prompt, Persona $persona, ?string $imagePath = null): string
-    {
-        $apiKey = config('services.gemini.api_key');
-        $currentTime = now()->format('Y-m-d H:i');
-
-        // Define the schedule_event tool
-        $tools = [
-            [
-                'function_declarations' => [
-                    [
-                        'name' => 'schedule_event',
-                        'description' => "Schedule a future message to the user. Use this PROACTIVELY when the user mentions future plans (meetings, waking up, travel, appointments). Current time is: {$currentTime}",
-                        'parameters' => [
-                            'type' => 'OBJECT',
-                            'properties' => [
-                                'time' => [
-                                    'type' => 'STRING',
-                                    'description' => "The time to send the message (Format: YYYY-MM-DD HH:MM). Convert relative times (like '2 PM today', 'tomorrow 9 AM') to absolute timestamp based on current time: {$currentTime}",
-                                ],
-                                'topic' => [
-                                    'type' => 'STRING',
-                                    'description' => 'The context/topic of the message (e.g., "Wake up check", "Good luck for meeting", "Check on travel")',
-                                ],
-                            ],
-                            'required' => ['time', 'topic'],
-                        ],
-                    ],
-                ],
-            ],
-        ];
-
-        try {
-            // Use HTTP API for function calling (SDK may have limited support)
-            $url = 'https://generativelanguage.googleapis.com/v1beta/models/'.config('services.gemini.model').":generateContent?key={$apiKey}";
-
-            // Build request payload
-            $parts = [['text' => $prompt]];
-
-            // Add image if provided
-            if ($imagePath && file_exists($imagePath)) {
-                $imageData = base64_encode(file_get_contents($imagePath));
-                $mimeType = mime_content_type($imagePath);
-                $parts[] = [
-                    'inline_data' => [
-                        'mime_type' => $mimeType,
-                        'data' => $imageData,
-                    ],
-                ];
-            }
-
-            $payload = [
-                'contents' => [
-                    [
-                        'parts' => $parts,
-                    ],
-                ],
-                'tools' => $tools,
-            ];
-
-            Log::info('GeminiBrainService: Calling Gemini with function calling support', [
-                'prompt_length' => strlen($prompt),
-                'has_media_instructions' => str_contains($prompt, '[GENERATE_IMAGE:'),
-            ]);
-
-            $httpResponse = Http::timeout(60)->post($url, $payload);
-
-            if (! $httpResponse->successful()) {
-                Log::error('GeminiBrainService: Function calling API failed', [
-                    'status' => $httpResponse->status(),
-                    'body' => $httpResponse->body(),
-                ]);
-
-                // Fallback to standard call
-                return $this->callGeminiWithRetry($client, $prompt, $imagePath);
-            }
-
-            $data = $httpResponse->json();
-            $candidate = $data['candidates'][0] ?? null;
-
-            if (! $candidate) {
-                Log::warning('GeminiBrainService: No candidate in function calling response');
-
-                return $this->callGeminiWithRetry($client, $prompt, $imagePath);
-            }
-
-            // Check if response contains a function call
-            $parts = $candidate['content']['parts'] ?? [];
-            $functionCall = null;
-            $textResponse = '';
-
-            foreach ($parts as $part) {
-                if (isset($part['functionCall'])) {
-                    $functionCall = $part['functionCall'];
-                }
-                if (isset($part['text'])) {
-                    $textResponse .= $part['text'];
-                }
-            }
-
-            // Log the raw response for debugging
-            Log::debug('GeminiBrainService: Raw Gemini response', [
-                'text' => substr($textResponse, 0, 200),
-                'has_function_call' => $functionCall !== null,
-                'has_generate_image_tag' => str_contains($textResponse, '[GENERATE_IMAGE:'),
-            ]);
-
-            // CASE A: Function call detected → Execute and recurse
-            if ($functionCall && $functionCall['name'] === 'schedule_event') {
-                $args = $functionCall['args'] ?? [];
-                $time = $args['time'] ?? null;
-                $topic = $args['topic'] ?? null;
-
-                Log::info('GeminiBrainService: Function call detected', [
-                    'function' => 'schedule_event',
-                    'time' => $time,
-                    'topic' => $topic,
-                ]);
-
-                // Create event in database
-                $scheduledAt = Carbon::parse($time);
-                $contextPrompt = "User has an event now: {$topic}. Send a natural, caring message checking on them or wishing them luck.";
-
-                EventSchedule::create([
-                    'persona_id' => $persona->id,
-                    'type' => 'text',
-                    'context_prompt' => $contextPrompt,
-                    'scheduled_at' => $scheduledAt,
-                    'status' => 'pending',
-                ]);
-
-                Log::info('GeminiBrainService: Event scheduled successfully', [
-                    'scheduled_at' => $scheduledAt->format('Y-m-d H:i:s'),
-                    'topic' => $topic,
-                ]);
-
-                // Send function response back to Gemini to get final text reply
-                $functionResponsePayload = [
-                    'contents' => [
-                        [
-                            'parts' => $parts, // Original prompt
-                        ],
-                        [
-                            'role' => 'model',
-                            'parts' => [
-                                [
-                                    'functionCall' => $functionCall,
-                                ],
-                            ],
-                        ],
-                        [
-                            'role' => 'function',
-                            'parts' => [
-                                [
-                                    'functionResponse' => [
-                                        'name' => 'schedule_event',
-                                        'response' => [
-                                            'success' => true,
-                                            'message' => "Event scheduled for {$time}: {$topic}",
-                                        ],
-                                    ],
-                                ],
-                            ],
-                        ],
-                    ],
-                    'tools' => $tools,
-                ];
-
-                $finalResponse = Http::timeout(60)->post($url, $functionResponsePayload);
-
-                if ($finalResponse->successful()) {
-                    $finalData = $finalResponse->json();
-                    $text = $finalData['candidates'][0]['content']['parts'][0]['text'] ?? '';
-                    Log::info('GeminiBrainService: Final text response received after function call');
-
-                    return $text;
-                } else {
-                    Log::error('GeminiBrainService: Failed to get final response after function call');
-
-                    return "Okay, I'll remind you! 💕";
-                }
-            }
-
-            // CASE B: No function call → Return text response
-            return $textResponse;
-
-        } catch (\Exception $e) {
-            Log::error('GeminiBrainService: Function calling failed', [
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
-            ]);
-
-            // Fallback to standard call
-            return $this->callGeminiWithRetry($client, $prompt, $imagePath);
-        }
-    }
 
     // ============================================================================
     // CONTEXT BUILDING METHODS
@@ -1667,7 +1102,7 @@ PROMPT;
             ->get();
         $relevantTags = $relevantTags->merge($highImportanceTags);
 
-        Log::info('GeminiBrainService: Tier 0 (High Importance) loaded', [
+        Log::info('BrainService: Tier 0 (High Importance) loaded', [
             'count' => $highImportanceTags->count(),
         ]);
 
@@ -1677,18 +1112,18 @@ PROMPT;
             ->get();
         $relevantTags = $relevantTags->merge($recentTags);
 
-        Log::info('GeminiBrainService: Tier 1 (Recency) loaded', [
+        Log::info('BrainService: Tier 1 (Recency) loaded', [
             'count' => $recentTags->count(),
         ]);
 
         // TIER 2: Core Categories - Always needed
-        $coreCategories = ['daily_outfit', 'night_outfit', 'basic_info', 'name', 'age', 'location', 'current_mood'];
+        $coreCategories = ['basic_info', 'name', 'age', 'location', 'current_mood'];
         $coreTags = $persona->memoryTags()
             ->whereIn('category', $coreCategories)
             ->get();
         $relevantTags = $relevantTags->merge($coreTags);
 
-        Log::info('GeminiBrainService: Tier 2 (Core) loaded', [
+        Log::info('BrainService: Tier 2 (Core) loaded', [
             'count' => $coreTags->count(),
         ]);
 
@@ -1731,7 +1166,7 @@ PROMPT;
                 ->get();
             $relevantTags = $relevantTags->merge($keywordTags);
 
-            Log::info('GeminiBrainService: Tier 3 (Keywords) loaded', [
+            Log::info('BrainService: Tier 3 (Keywords) loaded', [
                 'matched_categories' => $matchedCategories,
                 'count' => $keywordTags->count(),
             ]);
@@ -1740,7 +1175,7 @@ PROMPT;
         // TIER 4: Deduplication - Remove duplicates by ID
         $relevantTags = $relevantTags->unique('id');
 
-        Log::info('GeminiBrainService: Final relevant tags', [
+        Log::info('BrainService: Final relevant tags', [
             'total_count' => $relevantTags->count(),
         ]);
 
@@ -1749,53 +1184,38 @@ PROMPT;
 
     /**
      * Build memory context string from memory tags.
+     * Pass $persona to include the current wardrobe outfit in context.
      */
-    private function buildMemoryContext(Collection $memoryTags): string
+    private function buildMemoryContext(Collection $memoryTags, ?Persona $persona = null): string
     {
         if ($memoryTags->isEmpty()) {
             return 'No stored memories yet.';
         }
 
-        // Separate outfit tags from other memories
-        $outfitCategories = ['daily_outfit', 'night_outfit'];
-
         $userFacts = $memoryTags
             ->where('target', 'user')
-            ->whereNotIn('category', $outfitCategories)
             ->map(fn ($tag) => "- {$tag->category}: {$tag->value}")
             ->join("\n");
 
         $selfFacts = $memoryTags
             ->where('target', 'self')
-            ->whereNotIn('category', $outfitCategories)
             ->map(fn ($tag) => "- {$tag->category}: {$tag->value}")
             ->join("\n");
 
         $context = "What you know about the user:\n".($userFacts ?: 'Nothing yet.');
         $context .= "\n\nWhat you know about yourself:\n".($selfFacts ?: 'Nothing yet.');
 
-        // Add current outfit context
-        $currentOutfit = $this->getCurrentOutfitFromMemory($memoryTags);
-        if ($currentOutfit) {
-            $context .= "\n\n[CURRENT OUTFIT]: You are currently wearing: {$currentOutfit}";
+        // Add current outfit from wardrobe
+        if ($persona) {
+            $currentHour = now()->hour;
+            $timeContext = ($currentHour >= self::NIGHT_TIME_START || $currentHour < self::NIGHT_TIME_END) ? 'nighttime' : 'daytime';
+            $wardrobeItem = Wardrobe::getTodaysOutfit($persona, $timeContext);
+            if ($wardrobeItem) {
+                $context .= "\n\n[CURRENT OUTFIT]: You are currently wearing: {$wardrobeItem->description}";
+            }
         }
 
         return $context;
-    }
-
-    /**
-     * Get current outfit from memory tags collection based on time.
-     */
-    private function getCurrentOutfitFromMemory(Collection $memoryTags): ?string
-    {
-        $currentHour = now()->hour;
-        $isNightTime = $currentHour >= self::NIGHT_TIME_START || $currentHour < self::NIGHT_TIME_END;
-
-        $category = $isNightTime ? 'night_outfit' : 'daily_outfit';
-
-        $outfit = $memoryTags->where('category', $category)->first();
-
-        return $outfit?->value;
     }
 
     /**

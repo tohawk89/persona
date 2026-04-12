@@ -13,7 +13,7 @@ return [
     |
     */
 
-    'default' => 'gemini',
+    'default' => env('AI_DEFAULT_PROVIDER', 'gemini'),
     'default_for_images' => 'gemini',
     'default_for_audio' => 'eleven',
     'default_for_transcription' => 'openai',
@@ -96,6 +96,12 @@ return [
             'key' => env('JINA_API_KEY'),
         ],
 
+        'lmstudio' => [
+            'driver' => 'openai',
+            'key' => env('LM_STUDIO_API_KEY', 'lm-studio'),
+            'url' => env('LM_STUDIO_URL', 'http://127.0.0.1:1234/v1'),
+        ],
+
         'mistral' => [
             'driver' => 'mistral',
             'key' => env('MISTRAL_API_KEY'),
@@ -128,6 +134,52 @@ return [
             'driver' => 'xai',
             'key' => env('XAI_API_KEY'),
             'url' => env('XAI_URL', 'https://api.x.ai/v1'),
+        ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Agent Configuration
+    |--------------------------------------------------------------------------
+    |
+    | Configure provider and model per agent type. Each agent checks its own
+    | config first, then falls back to the global default_model, then to the
+    | provider's built-in default. Swap any agent to a different model or
+    | provider by setting the corresponding env variable.
+    |
+    | Example:
+    |   AI_DEFAULT_MODEL=gemma-4-e2b-it-uncensored
+    |   AI_PLANNER_PROVIDER=gemini
+    |   AI_PLANNER_MODEL=gemini-2.5-flash
+    |
+    */
+
+    'agents' => [
+        'default_model' => env('AI_DEFAULT_MODEL', ''),
+
+        'chat' => [
+            'provider' => env('AI_CHAT_PROVIDER'),
+            'model' => env('AI_CHAT_MODEL'),
+        ],
+
+        'planner' => [
+            'provider' => env('AI_PLANNER_PROVIDER'),
+            'model' => env('AI_PLANNER_MODEL'),
+        ],
+
+        'memory' => [
+            'provider' => env('AI_MEMORY_PROVIDER'),
+            'model' => env('AI_MEMORY_MODEL'),
+        ],
+
+        'event' => [
+            'provider' => env('AI_EVENT_PROVIDER'),
+            'model' => env('AI_EVENT_MODEL'),
+        ],
+
+        'utility' => [
+            'provider' => env('AI_UTILITY_PROVIDER'),
+            'model' => env('AI_UTILITY_MODEL'),
         ],
     ],
 

@@ -3,7 +3,7 @@
 namespace App\Mcp\Tools;
 
 use App\Ai\Agents\PersonaAgent;
-use App\Facades\GeminiBrain;
+use App\Facades\Brain;
 use App\Models\Persona;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Laravel\Mcp\Request;
@@ -41,7 +41,7 @@ class GeneratePersonaReplyTool extends Tool
             chatHistory: $data['chat_history'] ?? [],
         )->prompt($data['user_message'], provider: 'gemini');
 
-        $reply = GeminiBrain::processMediaTags($agentResponse->text, $persona);
+        $reply = Brain::processMediaTags($agentResponse->text, $persona);
 
         return Response::text($reply);
     }

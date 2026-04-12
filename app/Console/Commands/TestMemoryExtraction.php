@@ -2,9 +2,11 @@
 
 namespace App\Console\Commands;
 
+use App\Facades\Brain;
+use App\Models\MemoryTag;
+use App\Models\Message;
+use App\Models\User;
 use Illuminate\Console\Command;
-use App\Models\{User, Message, MemoryTag};
-use App\Facades\GeminiBrain;
 
 class TestMemoryExtraction extends Command
 {
@@ -30,15 +32,17 @@ class TestMemoryExtraction extends Command
 
         $user = User::find($userId);
 
-        if (!$user) {
+        if (! $user) {
             $this->error("User with ID {$userId} not found");
+
             return 1;
         }
 
         $persona = $user->persona;
 
-        if (!$persona) {
-            $this->error("User has no persona configured");
+        if (! $persona) {
+            $this->error('User has no persona configured');
+
             return 1;
         }
 
@@ -46,19 +50,19 @@ class TestMemoryExtraction extends Command
         $this->newLine();
 
         // Show current memory state
-        $this->info("📚 CURRENT MEMORY STATE:");
+        $this->info('📚 CURRENT MEMORY STATE:');
         $currentTags = $persona->memoryTags()->get(['id', 'target', 'category', 'value']);
 
         if ($currentTags->isEmpty()) {
-            $this->warn("  No memory tags yet");
+            $this->warn('  No memory tags yet');
         } else {
             $this->table(
                 ['ID', 'Target', 'Category', 'Value'],
-                $currentTags->map(fn($tag) => [
+                $currentTags->map(fn ($tag) => [
                     $tag->id,
                     $tag->target,
                     $tag->category,
-                    substr($tag->value, 0, 50)
+                    substr($tag->value, 0, 50),
                 ])
             );
         }
@@ -72,7 +76,8 @@ class TestMemoryExtraction extends Command
             ->get();
 
         if ($recentMessages->isEmpty()) {
-            $this->error("No messages found for this user");
+            $this->error('No messages found for this user');
+
             return 1;
         }
 
@@ -80,12 +85,12 @@ class TestMemoryExtraction extends Command
         $this->newLine();
 
         // Call memory extraction
-        $this->info("🧠 Calling Gemini for memory analysis...");
-        $changes = GeminiBrain::extractMemoryTags($recentMessages, $persona);
+        $this->info('🧠 Calling Gemini for memory analysis...');
+        $changes = Brain::extractMemoryTags($recentMessages, $persona);
 
         // Display results
         $this->newLine();
-        $this->info("✨ GEMINI ANALYSIS RESULTS:");
+        $this->info('✨ GEMINI ANALYSIS RESULTS:');
         $this->newLine();
 
         // ADD operations
@@ -99,7 +104,7 @@ class TestMemoryExtraction extends Command
                 }
             }
         } else {
-            $this->line("  (none)");
+            $this->line('  (none)');
         }
         $this->newLine();
 
@@ -116,7 +121,7 @@ class TestMemoryExtraction extends Command
                 }
             }
         } else {
-            $this->line("  (none)");
+            $this->line('  (none)');
         }
         $this->newLine();
 
@@ -131,18 +136,19 @@ class TestMemoryExtraction extends Command
                 }
             }
         } else {
-            $this->line("  (none)");
+            $this->line('  (none)');
         }
         $this->newLine();
 
         // Ask for confirmation
-        if (!$this->confirm('Apply these changes to the database?', true)) {
+        if (! $this->confirm('Apply these changes to the database?', true)) {
             $this->warn('Changes discarded');
+
             return 0;
         }
 
         // Execute changes
-        $this->info("💾 Applying changes...");
+        $this->info('💾 Applying changes...');
 
         // ADD
         foreach ($changes['add'] ?? [] as $tagData) {
@@ -151,7 +157,7 @@ class TestMemoryExtraction extends Command
                 'target' => $tagData['target'],
                 'category' => $tagData['category'],
                 'value' => $tagData['value'],
-                'context' => $tagData['context'] ?? "Test extraction on " . now()->format('Y-m-d H:i'),
+                'context' => $tagData['context'] ?? 'Test extraction on '.now()->format('Y-m-d H:i'),
             ]);
         }
 
@@ -161,13 +167,13 @@ class TestMemoryExtraction extends Command
             if ($tag && $tag->persona_id === $persona->id) {
                 $tag->update([
                     'value' => $updateData['value'],
-                    'context' => $updateData['context'] ?? "Test update on " . now()->format('Y-m-d H:i'),
+                    'context' => $updateData['context'] ?? 'Test update on '.now()->format('Y-m-d H:i'),
                 ]);
             }
         }
 
         // REMOVE
-        if (!empty($changes['remove'])) {
+        if (! empty($changes['remove'])) {
             $tagsToRemove = MemoryTag::whereIn('id', $changes['remove'])
                 ->where('persona_id', $persona->id)
                 ->pluck('id')
@@ -176,7 +182,7 @@ class TestMemoryExtraction extends Command
         }
 
         $this->newLine();
-        $this->info("✅ Memory extraction completed!");
+        $this->info('✅ Memory extraction completed!');
         $this->line("  Added: {$addCount} | Updated: {$updateCount} | Removed: {$removeCount}");
 
         return 0;

@@ -2,17 +2,20 @@
 
 namespace App\Ai\Agents;
 
-use App\Facades\GeminiBrain;
+use App\Ai\Tools\ScheduleEventTool;
+use App\Facades\Brain;
 use App\Models\Persona;
 use Laravel\Ai\Contracts\Agent;
 use Laravel\Ai\Contracts\Conversational;
+use Laravel\Ai\Contracts\HasTools;
+use Laravel\Ai\Contracts\Tool;
 use Laravel\Ai\Messages\AssistantMessage;
 use Laravel\Ai\Messages\Message;
 use Laravel\Ai\Messages\UserMessage;
 use Laravel\Ai\Promptable;
 use Stringable;
 
-class PersonaAgent implements Agent, Conversational
+class PersonaAgent implements Agent, Conversational, HasTools
 {
     use Promptable;
 
@@ -27,11 +30,11 @@ class PersonaAgent implements Agent, Conversational
     ) {}
 
     /**
-     * Get the instructions that the agent should follow.
+     * Get the full system instructions for this persona.
      */
     public function instructions(): Stringable|string
     {
-        return GeminiBrain::buildPersonaInstructions($this->persona);
+        return Brain::buildPersonaInstructions($this->persona);
     }
 
     /**
@@ -47,5 +50,28 @@ class PersonaAgent implements Agent, Conversational
                 : new UserMessage($msg['content']),
             $this->chatHistory,
         );
+    }
+
+    /**
+     * Register tools available to this agent.
+     *
+     * @return Tool[]
+     */
+    public function tools(): iterable
+    {
+        return [new ScheduleEventTool($this->persona)];
+    }
+
+    public function provider(): ?string
+    {
+        return config('ai.agents.chat.provider') ?: null;
+    }
+
+    public function model(): ?string
+    {
+        $model = config('ai.agents.chat.model')
+            ?: config('ai.agents.default_model');
+
+        return $model ?: null;
     }
 }
